@@ -1,0 +1,4 @@
+# nunca subir datos reales del negocio a este repo publico
+*.xlsx
+*.xls
+*.csv
