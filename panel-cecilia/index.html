@@ -568,8 +568,10 @@ function normProf(s){var c=canon(s);
   if(EXCLUDE.includes(c))return null;
   if(c.includes('laura'))return 'Laura';if(c.includes('yeimi')||c.includes('yemi'))return 'Yeimi';
   if(c.includes('gabriela'))return 'Gabriela';if(c.includes('cata')||c.includes('catalina'))return 'Cata';
-  if(c.includes('guiovi'))return 'Guiovi';if(c.includes('dahiana')||c.includes('dahyana'))return 'Dahiana';
+  if(c.includes('guiovi')||c.includes('guiovanca'))return 'Guiovi';if(c.includes('dahiana')||c.includes('dahyana'))return 'Dahiana';
   if(c.includes('ceci')||c.includes('cecilia'))return 'Ceci';
+  if(c.includes('cony')||c.includes('constanza'))return 'Cony';
+  if(c.includes('fran')||c.includes('francisca'))return 'Fran';
   /* nombre real pero fuera del roster actual (ej: Fran, suplentes) -> Title Case, se conserva */
   var raw=String(s||'').trim().replace(/\s+/g,' ');
   if(!raw)return null;
