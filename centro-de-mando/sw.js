@@ -1,6 +1,6 @@
 // Service worker minimo: permite instalar la app y abrirla sin conexion (solo la interfaz;
 // los reportes siempre necesitan que cargues un Excel manualmente).
-const CACHE_NAME = 'centro-mando-shell-v1';
+const CACHE_NAME = 'centro-mando-shell-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -15,20 +15,18 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// Red primero: la app siempre toma la version publicada mas reciente; el cache solo se usa sin conexion.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fetchPromise = fetch(e.request).then(resp => {
-        // solo cachea copias de nuestro propio origen; las librerias de CDN (xlsx, Chart.js, jsPDF)
-        // siempre se piden frescas a la red para no quedar con versiones desactualizadas
-        if (resp.ok && e.request.url.startsWith(self.location.origin)) {
-          const clone = resp.clone();
-          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-        }
-        return resp;
-      }).catch(() => cached);
-      return cached || fetchPromise;
-    })
+    fetch(e.request).then(resp => {
+      // solo cachea copias de nuestro propio origen; las librerias de CDN (xlsx, Chart.js, jsPDF)
+      // siempre se piden frescas a la red para no quedar con versiones desactualizadas
+      if (resp.ok && e.request.url.startsWith(self.location.origin)) {
+        const clone = resp.clone();
+        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+      }
+      return resp;
+    }).catch(() => caches.match(e.request))
   );
 });
