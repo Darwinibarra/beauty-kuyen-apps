@@ -289,6 +289,7 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
   <button class="tab" onclick="setTab('estacionalidad',this)">📅 Estacionalidad</button>
   <button class="tab" onclick="setTab('resumen',this)">📋 Resumen dia</button>
   <button class="tab" onclick="setTab('comentarios',this)">💬 Comentarios</button>
+  <button class="tab" onclick="setTab('consumo',this)">🧾 Consumo interno</button>
 </div>
 
 <!-- TAB CLIENTAS -->
@@ -427,6 +428,12 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
     </div>
   </div>
 
+  <!-- GIFT CARDS (siempre separado de la venta de servicios) -->
+  <div class="panel" style="margin-bottom:12px">
+    <div class="panel-h"><h3>🎁 Gift cards</h3><span class="badge badge-rosa" id="resGiftTotal">—</span></div>
+    <div id="resGift" style="padding:12px 14px"><div class="empty"><p>Carga el Excel.</p></div></div>
+  </div>
+
   <!-- PRODUCCION POR MANICURISTA -->
   <div class="panel" style="margin-bottom:12px">
     <div class="panel-h"><h3>👩 Produccion por manicurista</h3><span style="font-size:10.5px;color:var(--gris-s)">Servicios · Venta · Ticket · Medios de pago · Anticipos</span></div>
@@ -504,6 +511,17 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
     <div style="margin-left:auto;font-size:11px;color:var(--gris-s)" id="comInfo">—</div>
   </div>
   <div id="comBody"><div class="panel"><div class="empty"><div class="eico">💬</div><p>Carga el Excel del registro para ver los <b>comentarios de la semana</b>.</p></div></div></div>
+</div>
+
+<!-- TAB CONSUMO INTERNO (descuentos de propinas: productos, servicios en el salon y efectivo) -->
+<div id="tab-consumo" style="display:none">
+  <div style="background:#fff;border:1px solid var(--lin);border-radius:13px;box-shadow:var(--sh);padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div style="font-size:10px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:1px">Mes:</div>
+    <select id="consMes" onchange="renderConsumo()" style="font-family:inherit;font-size:13px;font-weight:700;color:var(--neg);background:var(--cr2);border:1.5px solid var(--lin);border-radius:9px;padding:7px 11px;outline:none"></select>
+    <div style="font-size:10px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:1px;margin-left:8px">Profesional:</div>
+    <select id="consProf" onchange="renderConsumo()" style="font-family:inherit;font-size:13px;font-weight:700;color:var(--neg);background:var(--cr2);border:1.5px solid var(--lin);border-radius:9px;padding:7px 11px;outline:none"><option value="">Todas</option></select>
+  </div>
+  <div id="consBody"><div class="panel"><div class="empty"><div class="eico">🧾</div><p>Carga el Excel del registro para ver el <b>consumo interno del equipo</b>.</p></div></div></div>
 </div>
 
 </div><!-- /wrap -->
@@ -613,7 +631,7 @@ function txt(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
    TABS
 ═══════════════════════════════════════════ */
 function setTab(name,btn){
-  ['clientas','postventa','estacionalidad','resumen','comentarios'].forEach(function(t){
+  ['clientas','postventa','estacionalidad','resumen','comentarios','consumo'].forEach(function(t){
     document.getElementById('tab-'+t).style.display='none';
   });
   document.getElementById('tab-'+name).style.display='';
@@ -622,6 +640,7 @@ function setTab(name,btn){
   activeTab=name;
   if(name==='estacionalidad')renderEstac();
   if(name==='comentarios')renderComentarios();
+  if(name==='consumo')renderConsumo();
 }
 
 /* ═══════════════════════════════════════════
@@ -936,14 +955,20 @@ function renderResumen(ultimoDia,diaData){
   if(!rows.length){return;}
   var partes=ultimoDia.split('-');
   var fechaLabel=partes[2]+'/'+partes[1]+'/'+partes[0];
+  window._resRango={start:ultimoDia,end:ultimoDia};
   renderResumenCore(rows,fechaLabel,false,'Hola Darwin, resumen del '+fechaLabel+':');
 }
 
 function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
-  var ventas=rows.reduce(function(s,r){return s+r.precio;},0);
-  var ticket=rows.length?Math.round(ventas/rows.length):0;
+  var ventas=rows.reduce(function(s,r){return s+valCaja(r);},0);
+  var nPag=rows.filter(function(r){return !r.gift;}).length;
+  var ticket=nPag?Math.round(ventas/nPag):0;
+  var canjes=rows.filter(function(r){return r.gift;});
+  var canjeTotal=canjes.reduce(function(s,r){return s+(r.precio-(r.giftAdic||0));},0);
+  var gi=giftResumen(canjes,canjeTotal);
+  var efSheet=consumoEfectivoRango();
   var nuevas=rows.filter(function(r){return r.nueva;}).length;
-  var totalAnti=rows.reduce(function(s,r){return s+(r.anti||0);},0);
+  var totalAnti=rows.reduce(function(s,r){return s+(r.anti||0);},0)+efSheet.reduce(function(s,c){return s+c.monto;},0);
   var totalProp=rows.reduce(function(s,r){return s+(r.prop||0);},0);
   txt('resFecha',fechaLabel);
   txt('resDetTotal',rows.length+' servicios'+(esSemana?' (semana)':''));
@@ -951,8 +976,8 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   /* Totales */
   var metaColor=ticket>=META_TICKET?'var(--vrd)':ticket>=META_TICKET*0.8?'var(--nar)':'var(--roj)';
   document.getElementById('resTotales').innerHTML=
-    frow('Servicios realizados','<b>'+rows.length+'</b>')+
-    frow('Venta bruta','<b>'+clp(ventas)+'</b>')+
+    frow('Servicios realizados','<b>'+rows.length+'</b>'+(canjes.length?' <span style="font-size:10px;color:var(--gris-s)">('+canjes.length+' canje gift card)</span>':''))+
+    frow('Venta bruta'+(canjes.length?' (sin canjes gift card)':''),'<b>'+clp(ventas)+'</b>')+
     frow('Ticket promedio','<b style="color:'+metaColor+'">'+clp(ticket)+'</b>')+
     frow('Meta ticket',clp(META_TICKET))+
     frow('Diferencia vs meta','<b style="color:'+(ticket>=META_TICKET?'var(--vrd)':'var(--roj)')+'">'+
@@ -965,8 +990,8 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   var propPagoMap={};
   rows.forEach(function(r){
     var pg=normPago(r.pago||'');
-    if(!pagoMap[pg])pagoMap[pg]={n:0,total:0};
-    pagoMap[pg].n++;pagoMap[pg].total+=r.precio;
+    var vc=valCaja(r);
+    if(vc>0){var pgc=pagoCaja(r);if(!pagoMap[pgc])pagoMap[pgc]={n:0,total:0};pagoMap[pgc].n++;pagoMap[pgc].total+=vc;}
     if(r.prop>0){
       if(!propPagoMap[pg])propPagoMap[pg]={n:0,total:0};
       propPagoMap[pg].n++;propPagoMap[pg].total+=r.prop;
@@ -978,7 +1003,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   var pagoHtml='';
   pagoOrd.forEach(function(pg){
     var d=pagoMap[pg];if(!d)return;
-    var pct=Math.round(d.total/ventas*100);
+    var pct=ventas?Math.round(d.total/ventas*100):0;
     pagoHtml+='<div style="margin-bottom:10px">'+
       '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'+
         '<span style="font-size:12px;font-weight:700;color:'+pagoCols[pg]+'">'+pg+'</span>'+
@@ -1026,6 +1051,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   pagoHtml+='<div style="margin-top:10px;padding:10px 12px;background:var(--vrd-s);border:1px solid #a8dfc0;border-radius:10px;font-size:12px;color:var(--vrd)">'+
     '<b>Efectivo a cuadrar: '+clp(totalEfectivoFisico)+'</b>'+
     (propEfect>0?'<br><span style="font-size:11px">Incluye propinas en efectivo: '+clp(propEfect)+'</span>':'')+
+    (gi.efectivo>0?'<br><span style="font-size:11px;color:var(--rosa)">Aparte, no incluido: efectivo por venta de gift cards '+clp(gi.efectivo)+'</span>':'')+
     (totalAnti>0?'<br><span style="font-size:11px">Menos anticipos: -'+clp(totalAnti)+'</span><br><b>Caja neta: '+clp(totalEfectivoFisico-totalAnti)+'</b>':'')+'</div>';
   document.getElementById('resPagos').innerHTML=pagoHtml||'<div class="empty"><p>Sin datos de pago.</p></div>';
 
@@ -1033,27 +1059,32 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   txt('resAntiTotal',clp(totalAnti));
   var antiRows=rows.filter(function(r){return r.anti>0;});
   var antiHtml='';
-  if(!antiRows.length){
+  if(!antiRows.length&&!efSheet.length){
     antiHtml='<div style="text-align:center;padding:20px;color:var(--gris-s);font-size:12px">Sin anticipos hoy</div>';
   } else {
     var antiProf={};
     antiRows.forEach(function(r){if(!antiProf[r.prof])antiProf[r.prof]=0;antiProf[r.prof]+=r.anti;});
+    efSheet.forEach(function(c){if(!antiProf[c.prof])antiProf[c.prof]=0;antiProf[c.prof]+=c.monto;});
     antiHtml='<div style="padding:10px 12px;background:var(--nar-s);border:1px solid #f0d898;border-radius:10px;font-size:13px;font-weight:800;color:var(--nar);margin-bottom:10px">Total: '+clp(totalAnti)+'</div>'+
       Object.keys(antiProf).map(function(p){return frow(p,'<b style="color:var(--nar)">'+clp(antiProf[p])+'</b>');}).join('')+
-      '<div style="margin-top:10px;font-size:11px;color:var(--gris-s)">'+antiRows.length+' registro(s). Descontar de liquidacion semanal.</div>';
+      '<div style="margin-top:10px;font-size:11px;color:var(--gris-s)">'+(antiRows.length+efSheet.length)+' registro(s). Se descuentan de las propinas del mes (hoja CONSUMO INTERNO EQUIPO).</div>';
   }
   document.getElementById('resAnticipos').innerHTML=antiHtml;
 
   /* Tabla por manicurista */
   var profMap={};
   rows.forEach(function(r){
-    if(!profMap[r.prof])profMap[r.prof]={n:0,total:0,anti:0,prop:0,pagos:{}};
-    profMap[r.prof].n++;profMap[r.prof].total+=r.precio;profMap[r.prof].anti+=r.anti||0;profMap[r.prof].prop+=r.prop||0;
-    var pg=normPago(r.pago||'');profMap[r.prof].pagos[pg]=(profMap[r.prof].pagos[pg]||0)+r.precio;
+    if(!profMap[r.prof])profMap[r.prof]={n:0,np:0,total:0,anti:0,prop:0,pagos:{}};
+    profMap[r.prof].n++;if(!r.gift)profMap[r.prof].np++;profMap[r.prof].total+=valCaja(r);profMap[r.prof].anti+=r.anti||0;profMap[r.prof].prop+=r.prop||0;
+    var vcp=valCaja(r);if(vcp>0){var pg=pagoCaja(r);profMap[r.prof].pagos[pg]=(profMap[r.prof].pagos[pg]||0)+vcp;}
+  });
+  efSheet.forEach(function(c){
+    if(!profMap[c.prof])profMap[c.prof]={n:0,np:0,total:0,anti:0,prop:0,pagos:{}};
+    profMap[c.prof].anti+=c.monto;
   });
   var pOrd=Object.keys(profMap).sort(function(a,b){return profMap[b].total-profMap[a].total;});
   document.getElementById('resProfTabla').innerHTML=pOrd.map(function(p,i){
-    var d=profMap[p];var tk=Math.round(d.total/d.n);
+    var d=profMap[p];var tk=d.np?Math.round(d.total/d.np):0;
     var tkC=tk>=META_TICKET?'var(--vrd)':tk>=META_TICKET*0.8?'var(--nar)':'var(--roj)';
     return '<tr style="background:'+(i%2?'#fdfbf9':'#fff')+'">'+
       '<td style="padding:9px 12px;font-weight:700">'+p+'</td>'+
@@ -1085,13 +1116,17 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
       '<td style="padding:7px 10px;font-weight:600">'+r.cli+'</td>'+
       '<td style="padding:7px 10px">'+r.serv+'</td>'+
       '<td style="padding:7px 10px;color:var(--gris)">'+r.prof+'</td>'+
-      '<td style="padding:7px 10px;text-align:right;font-weight:700">'+clp(r.precio)+'</td>'+
-      '<td style="padding:7px 10px;text-align:center;font-size:10px;color:var(--gris-s)">'+normPago(r.pago||'')+'</td>'+
+      '<td style="padding:7px 10px;text-align:right;font-weight:700'+(r.gift?';color:var(--gris-s)':'')+'">'+clp(r.precio)+'</td>'+
+      '<td style="padding:7px 10px;text-align:center;font-size:10px;color:'+(r.gift?'var(--rosa);font-weight:700':'var(--gris-s)')+'">'+(r.gift?'🎁 Canje gift card':normPago(r.pago||''))+'</td>'+
       '<td style="padding:7px 10px;text-align:right;color:var(--nar);font-weight:'+(r.anti>0?'700':'400')+'">'+
         (r.anti>0?clp(r.anti):'-')+'</td>'+
       '<td style="padding:7px 10px;text-align:right;color:var(--vrd)">'+(r.prop>0?clp(r.prop):'-')+'</td>'+
     '</tr>';
   }).join('');
+
+  /* Gift cards */
+  document.getElementById('resGift').innerHTML=gi.html;
+  txt('resGiftTotal',gi.n?clp(gi.total)+' vendidas':(canjes.length+' canje(s)'));
 
   /* Mensaje Darwin */
   var msg=saludoMsg+'\n\n'+
@@ -1107,12 +1142,12 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
       pagoOrd.filter(function(pg){return propPagoMap[pg];}).map(function(pg){
         return '  '+pg+': '+clp(propPagoMap[pg].total);
       }).join('\n'):'')+
-    '\n\nEfectivo a cuadrar (ventas+propinas en efectivo): '+clp(totalEfectivoFisico)+
+    '\n\nEfectivo a cuadrar (ventas+propinas en efectivo): '+clp(totalEfectivoFisico)+gi.msg+
     (totalAnti>0?'\n\nAnticipos: '+clp(totalAnti)+'\n'+
       Object.keys(profMap).filter(function(p){return profMap[p].anti>0;}).map(function(p){return '  '+p+': '+clp(profMap[p].anti);}).join('\n')+
       '\n\nCaja neta: '+clp(totalEfectivoFisico-totalAnti):'\n\nSin anticipos')+
     '\n\nPor manicurista:\n'+
-    pOrd.map(function(p){var d=profMap[p];var tk=Math.round(d.total/d.n);
+    pOrd.map(function(p){var d=profMap[p];var tk=d.np?Math.round(d.total/d.np):0;
       return '  '+p+': '+d.n+' serv / '+clp(d.total)+' / ticket '+clp(tk)+(d.anti>0?' / anticipo '+clp(d.anti):'');
     }).join('\n')+'\n\nCecilia - Beauty Kuyen';
   document.getElementById('msgDarwin').textContent=msg.replace(/\\n/g,'\n');
@@ -1185,6 +1220,7 @@ function renderResumenSemana(startISO,endISO){
   infoEl.textContent=rows.length+' registros · '+fechaLabel;
   infoEl.style.color='var(--vrd)';
   var saludo='Hola Darwin, cuadre de caja semana '+fechaLabel+' (deposito sabado):';
+  window._resRango={start:startISO,end:endISO};
   renderResumenCore(rows,fechaLabel,true,saludo);
 }
 
@@ -1285,6 +1321,7 @@ function procesarRegistroBuffer(arrayBuffer){
       var cPago=fc(['mediopago','mediodepago','pagomedio','pago','medio']);
       var cAnti=fc(['anticipo']);
       var cProp=fc(['propina','propinas']);
+      var cTipoMov=fc(['tipodemovimiento']),cAdic=fc(['montopagoadicional']),cMedAdic=fc(['mediopagoadicional']);
       if(!cF||!cP||!cV){alert('Columnas no encontradas.');return;}
 
       ALL_ROWS=[];CLI_DATA={};
@@ -1305,7 +1342,10 @@ function procesarRegistroBuffer(arrayBuffer){
         var pago=cPago?String(r[cPago]||'').trim():'';
         var anti=cAnti?(typeof r[cAnti]==='number'?r[cAnti]:parseFloat(String(r[cAnti]||'0').replace(/[^\d.]/g,''))||0):0;
         var prop=cProp?(typeof r[cProp]==='number'?r[cProp]:parseFloat(String(r[cProp]||'0').replace(/[^\d.]/g,''))||0):0;
-        ALL_ROWS.push({fecha:f,prof:p,precio:v,cli:cli,serv:serv,estado:estado,nueva:nueva,primera:primera||f,pago:pago,anti:anti,prop:prop});
+        /* canje de gift card: servicio pagado con una tarjeta que se vendio antes (esa plata esta en CONTROL GIFT CARDS) */
+        var esGift=canon(pago).indexOf('gift')>=0||(cTipoMov&&canon(r[cTipoMov])==='canje')||canon(serv).indexOf('gift')>=0;
+        var gAdic=cAdic?giftNum(r[cAdic]):0;
+        ALL_ROWS.push({fecha:f,prof:p,precio:v,cli:cli,serv:serv,estado:estado,nueva:nueva,primera:primera||f,pago:pago,anti:anti,prop:prop,gift:esGift,giftAdic:esGift?Math.min(gAdic,v):0,giftMedio:cMedAdic?String(r[cMedAdic]||'').trim():''});
         if(f>ultimaFecha)ultimaFecha=f;
         /* construir CLI_DATA */
         if(!CLI_DATA[cli]){CLI_DATA[cli]={cli:cli,n:0,total:0,servicios:[],prof:p,profHabitual:p,profCounts:{},ultima:'',primera:primera||f,estado:estado,nueva:nueva,ultimoServ:''};}
@@ -1331,6 +1371,8 @@ function procesarRegistroBuffer(arrayBuffer){
 
       /* hoja COMENTARIOS CLIENTAS (si existe) */
       try{parseComentarios(wb);}catch(exC){console.warn('Comentarios no leidos:',exC);COMENTARIOS=[];COM_HOJA=false;}
+      try{parseGiftCards(wb);}catch(exG){console.warn('Gift cards no leidas:',exG);GIFT_VENTAS=[];GIFT_HOJA=false;}
+      try{parseConsumo(wb);}catch(exK){console.warn('Consumo interno no leido:',exK);CONSUMO=[];CONS_HOJA=false;CONS_HUERFANOS=[];}
       window._comSemana=null;
       /* actualizar todo */
       var diaData=renderSemaforo(ultimaFecha);
@@ -1338,6 +1380,7 @@ function procesarRegistroBuffer(arrayBuffer){
       renderPostVenta();
       if(activeTab==='estacionalidad')renderEstac();
       if(activeTab==='comentarios')renderComentarios();
+      if(activeTab==='consumo')renderConsumo();
       window._ultimaDia=ultimaFecha;window._diaData=diaData;
       if(activeTab==='resumen'){
         if(window._modoResumen==='semana')irUltimaSemana();
@@ -2058,6 +2101,252 @@ function comCompartirPDF(){
     }
   }catch(e){}
   b.doc.save(b.name);
+}
+
+
+/* ═══════════════════════════════════════════
+   GIFT CARDS + CONSUMO INTERNO DEL EQUIPO
+═══════════════════════════════════════════ */
+var GIFT_VENTAS=[];
+var GIFT_HOJA=false;
+var CONSUMO=[];
+var CONS_HOJA=false;
+var CONS_HUERFANOS=[];
+
+/* un canje (servicio pagado con gift card) no es plata del dia: solo cuenta lo pagado con otro medio */
+function valCaja(r){return r.gift?(r.giftAdic||0):r.precio;}
+function pagoCaja(r){return r.gift?normPago(r.giftMedio||''):normPago(r.pago||'');}
+
+function giftNum(v){return typeof v==='number'?v:(parseFloat(String(v||'0').replace(/[^\d.,-]/g,'').replace(/\./g,'').replace(',','.'))||0);}
+
+/* hoja CONTROL GIFT CARDS: solo las ventas / cargas (la plata entra el dia de la venta) */
+function parseGiftCards(wb){
+  GIFT_VENTAS=[];GIFT_HOJA=false;
+  var sn=null;
+  wb.SheetNames.forEach(function(n){var c=canon(n);if(c.indexOf('control')===0&&c.indexOf('giftcard')>=0)sn=n;});
+  if(!sn)return;
+  GIFT_HOJA=true;
+  var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:true});
+  var hr=-1;
+  for(var i=0;i<Math.min(aoa.length,30);i++){
+    if(aoa[i].some(function(c){return canon(c)==='tipomovimiento';})){hr=i;break;}
+  }
+  if(hr<0)return;
+  var ix={};
+  aoa[hr].forEach(function(c,j){var k=canon(c);if(k&&!(k in ix))ix[k]=j;});
+  function g(row,k){return ix[k]!==undefined?row[ix[k]]:'';}
+  for(var i=hr+1;i<aoa.length;i++){
+    var r=aoa[i];
+    var tipo=canon(g(r,'tipomovimiento'));
+    if(tipo.indexOf('venta')<0&&tipo.indexOf('carga')<0)continue;
+    var f=toISO(g(r,'fechamovimiento'));
+    var monto=giftNum(g(r,'montocargado'));
+    if(!f||monto<=0)continue;
+    GIFT_VENTAS.push({fecha:f,monto:monto,medio:String(g(r,'mediopagoadicional')||'').trim(),cliente:String(g(r,'cliente')||'').trim(),codigo:String(g(r,'codigogiftcard')||'').trim()});
+  }
+}
+
+function consCat(tipo){
+  var c=canon(tipo);
+  if(c.indexOf('producto')>=0)return 'productos';
+  if(c.indexOf('servicio')>=0)return 'servicios';
+  if(c.indexOf('efectivo')>=0)return 'efectivo';
+  if(c.indexOf('consumo')>=0)return 'consumo';
+  return 'sin';
+}
+var CONS_LABEL={productos:'Compra de productos',servicios:'Servicio en el salón',efectivo:'Efectivo',consumo:'Consumo interno',sin:'Anticipo (sin clasificar)'};
+var CONS_COLOR={productos:'var(--azu)',servicios:'var(--rosa)',efectivo:'var(--nar)',consumo:'var(--gris)',sin:'var(--gris-s)'};
+
+function consLeerHoja(wb,sheetName){
+  var out=[];
+  var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,defval:'',raw:true});
+  var hr=-1;
+  for(var i=0;i<Math.min(aoa.length,10);i++){
+    if(aoa[i].some(function(c){return canon(c)==='profesional';})&&aoa[i].some(function(c){return canon(c)==='monto';})){hr=i;break;}
+  }
+  if(hr<0)return out;
+  var ix={};
+  aoa[hr].forEach(function(c,j){var k=canon(c);if(k&&!(k in ix))ix[k]=j;});
+  function g(row,ks){for(var q=0;q<ks.length;q++){if(ix[ks[q]]!==undefined)return row[ix[ks[q]]];}return '';}
+  for(var i=hr+1;i<aoa.length;i++){
+    var r=aoa[i];
+    var f=toISO(g(r,['fecha']));
+    var pf=String(g(r,['profesional'])||'').trim();
+    var p=pf?normProf(pf):null;
+    var m=giftNum(g(r,['monto']));
+    if(!f||!p||m<=0)continue;
+    var tipo=String(g(r,['tipo'])||'').trim();
+    out.push({fecha:f,prof:p,profFull:pf,tipo:tipo,cat:consCat(tipo),detalle:String(g(r,['detalle','motivo'])||'').trim(),monto:m});
+  }
+  return out;
+}
+/* hoja CONSUMO INTERNO EQUIPO (todo lo que se descuenta de propinas); si el Excel es antiguo, cae a CONTROL ANTICIPOS EQUIPO */
+function parseConsumo(wb){
+  CONSUMO=[];CONS_HOJA=false;CONS_HUERFANOS=[];
+  var nuevo=null,viejo=null;
+  wb.SheetNames.forEach(function(n){
+    var c=canon(n);
+    if(c.indexOf('consumo')>=0&&c.indexOf('interno')>=0)nuevo=n;
+    else if(c.indexOf('anticipo')>=0)viejo=n;
+  });
+  if(nuevo){
+    CONS_HOJA=true;
+    CONSUMO=consLeerHoja(wb,nuevo);
+    if(viejo){
+      /* avisar si en la hoja antigua (respaldo) quedaron filas que no estan en la nueva */
+      var usados={};
+      CONSUMO.forEach(function(c){var k=c.fecha+'|'+canon(c.prof)+'|'+c.monto;usados[k]=(usados[k]||0)+1;});
+      consLeerHoja(wb,viejo).forEach(function(c){
+        var k=c.fecha+'|'+canon(c.prof)+'|'+c.monto;
+        if(usados[k]>0)usados[k]--;else CONS_HUERFANOS.push(c);
+      });
+    }
+  }else if(viejo){
+    CONS_HOJA=true;
+    CONSUMO=consLeerHoja(wb,viejo);
+  }
+  CONSUMO.sort(function(a,b){return a.fecha<b.fecha?-1:a.fecha>b.fecha?1:0;});
+}
+/* efectivo entregado (anticipos) dentro del periodo que se esta viendo en el Resumen: sale de la caja */
+function consumoEfectivoRango(){
+  var rng=window._resRango;
+  if(!rng)return [];
+  return CONSUMO.filter(function(c){return c.fecha>=rng.start&&c.fecha<=rng.end&&(c.cat==='efectivo'||c.cat==='sin');});
+}
+
+/* bloque "Gift cards" del Resumen: canjes y ventas, siempre separados de la venta de servicios */
+function giftResumen(canjes,canjeTotal){
+  var rng=window._resRango||{start:'',end:''};
+  var ventas=GIFT_VENTAS.filter(function(g){return g.fecha>=rng.start&&g.fecha<=rng.end;});
+  var tot=ventas.reduce(function(s,g){return s+g.monto;},0);
+  var porMedio={};
+  ventas.forEach(function(g){var m=normPago(g.medio||'');porMedio[m]=(porMedio[m]||0)+g.monto;});
+  var efectivo=porMedio['Efectivo']||0;
+  var sub='font-size:10px;font-weight:800;color:var(--gris-s);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px';
+  var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">';
+  /* ventas */
+  h+='<div><div style="'+sub+'">Gift cards vendidas (plata cobrada)</div>';
+  if(!GIFT_HOJA)h+='<div style="font-size:11.5px;color:var(--gris-s)">El Excel cargado no tiene la hoja CONTROL GIFT CARDS.</div>';
+  else if(!ventas.length)h+='<div style="font-size:11.5px;color:var(--gris-s)">Sin ventas de gift card en este periodo.</div>';
+  else{
+    h+=frow('Total vendido','<b>'+clp(tot)+'</b> <span style="color:var(--gris-s)">('+ventas.length+')</span>');
+    ['Efectivo','Transferencia','Debito','Credito','Otro'].forEach(function(m){if(porMedio[m])h+=frow('&nbsp;&nbsp;'+m,clp(porMedio[m]));});
+    ventas.forEach(function(g){h+='<div style="font-size:10.5px;color:var(--gris);padding:2px 0">'+(fmtF(g.fecha).slice(0,5))+' · '+comEsc(g.cliente||'Gift card')+(g.codigo?' (N° '+comEsc(g.codigo)+')':'')+' · '+clp(g.monto)+' · '+normPago(g.medio||'')+'</div>';});
+  }
+  h+='<div style="margin-top:8px;padding:8px 10px;background:var(--rosa-s);border-radius:9px;font-size:10.5px;color:var(--rosa)">Esta plata <b>no está</b> en la venta de servicios ni en el efectivo a cuadrar: se registra solo en la hoja CONTROL GIFT CARDS.</div></div>';
+  /* canjes */
+  h+='<div><div style="'+sub+'">Canjes: servicios pagados con gift card</div>';
+  if(!canjes.length)h+='<div style="font-size:11.5px;color:var(--gris-s)">Sin canjes en este periodo.</div>';
+  else{
+    h+=frow('Servicios canjeados','<b>'+canjes.length+'</b> <span style="color:var(--gris-s)">('+clp(canjeTotal)+')</span>');
+    canjes.forEach(function(r){h+='<div style="font-size:10.5px;color:var(--gris);padding:2px 0">'+comEsc(r.cli)+' · '+comEsc(r.serv)+' · '+comEsc(r.prof)+' · '+clp(r.precio)+((r.giftAdic>0)?' (pagó '+clp(r.giftAdic)+' aparte)':'')+'</div>';});
+  }
+  h+='<div style="margin-top:8px;padding:8px 10px;background:var(--cr2);border-radius:9px;font-size:10.5px;color:var(--gris)">El canje <b>no suma</b> a la venta ni a la caja del día (la plata entró cuando se vendió la tarjeta). Solo se suma lo que la clienta pagó aparte, si lo hubo.</div></div>';
+  h+='</div>';
+  var msg='';
+  if(canjes.length)msg+='\n\nCanjes gift card (no incluidos en la venta ni en la caja): '+canjes.length+' servicio(s) / '+clp(canjeTotal);
+  if(ventas.length){
+    msg+='\nGift cards vendidas (aparte, no incluidas en la venta de servicios): '+clp(tot)+' ('+ventas.length+')';
+    if(efectivo>0)msg+='\n  De eso en efectivo: '+clp(efectivo)+' (contar aparte en la caja)';
+  }
+  return {html:h,msg:msg,efectivo:efectivo,total:tot,n:ventas.length};
+}
+
+/* ---------- pestaña Consumo interno ---------- */
+function consMesKey(iso){return iso.slice(0,7);}
+function consMesLabel(k){var p=k.split('-');return MESES_N[parseInt(p[1],10)-1]+' '+p[0];}
+function consPoblarMeses(){
+  var sel=document.getElementById('consMes');if(!sel)return;
+  var set={};
+  CONSUMO.forEach(function(c){set[consMesKey(c.fecha)]=1;});
+  if(window._ultimaDia)set[consMesKey(window._ultimaDia)]=1;
+  var keys=Object.keys(set).sort().reverse();
+  var prev=sel.value;
+  sel.innerHTML=keys.map(function(k){return '<option value="'+k+'">'+consMesLabel(k)+'</option>';}).join('');
+  if(prev&&set[prev])sel.value=prev;
+  else{
+    var conCons=CONSUMO.length?consMesKey(CONSUMO[CONSUMO.length-1].fecha):'';
+    sel.value=conCons&&set[conCons]?conCons:(keys[0]||'');
+  }
+}
+function consPoblarProfs(mes){
+  var sel=document.getElementById('consProf');if(!sel)return;
+  var set={};
+  CONSUMO.forEach(function(c){if(consMesKey(c.fecha)===mes)set[c.prof]=1;});
+  ALL_ROWS.forEach(function(r){if(r.prop>0&&consMesKey(r.fecha)===mes)set[r.prof]=1;});
+  var keys=Object.keys(set).sort();
+  var prev=sel.value;
+  sel.innerHTML='<option value="">Todas</option>'+keys.map(function(k){return '<option value="'+comEsc(k)+'">'+comEsc(k)+'</option>';}).join('');
+  if(prev&&set[prev])sel.value=prev;
+}
+function consResumen(mes){
+  /* por profesional: propinas del mes, descuentos por tipo, neta y saldo pendiente (misma regla que el Centro de Mando) */
+  var by={};
+  function get(p){return by[p]||(by[p]={prof:p,props:0,productos:0,servicios:0,efectivo:0,consumo:0,sin:0,total:0,items:[]});}
+  ALL_ROWS.forEach(function(r){if(r.prop>0&&consMesKey(r.fecha)===mes)get(r.prof).props+=r.prop;});
+  CONSUMO.forEach(function(c){
+    if(consMesKey(c.fecha)!==mes)return;
+    var o=get(c.prof);o[c.cat]+=c.monto;o.total+=c.monto;o.items.push(c);
+  });
+  var arr=Object.keys(by).map(function(k){var o=by[k];o.neta=Math.max(0,o.props-o.total);o.pend=Math.max(0,o.total-o.props);return o;});
+  arr.sort(function(a,b){return b.total-a.total||(a.prof<b.prof?-1:1);});
+  return arr;
+}
+function renderConsumo(){
+  var body=document.getElementById('consBody');if(!body)return;
+  if(!ALL_ROWS.length&&!CONS_HOJA){
+    body.innerHTML='<div class="panel"><div class="empty"><div class="eico">🧾</div><p>Carga el Excel del registro para ver el <b>consumo interno del equipo</b>.</p></div></div>';
+    return;
+  }
+  if(!CONS_HOJA){
+    body.innerHTML='<div class="panel"><div class="empty"><div class="eico">🧾</div><p>El Excel cargado no tiene la hoja <b>CONSUMO INTERNO EQUIPO</b>.</p></div></div>';
+    return;
+  }
+  consPoblarMeses();
+  var mes=document.getElementById('consMes').value;
+  consPoblarProfs(mes);
+  var pf=document.getElementById('consProf').value;
+  var all=consResumen(mes);
+  var arr=pf?all.filter(function(o){return o.prof===pf;}):all;
+  var T={props:0,productos:0,servicios:0,efectivo:0,consumo:0,sin:0,total:0,neta:0,pend:0};
+  arr.forEach(function(o){Object.keys(T).forEach(function(k){T[k]+=o[k];});});
+  var h='';
+  if(CONS_HUERFANOS.length){
+    h+='<div style="background:var(--nar-s);border:1px solid var(--nar);border-radius:13px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:var(--nar)">⚠️ La hoja antigua <b>CONTROL ANTICIPOS EQUIPO</b> tiene '+CONS_HUERFANOS.length+' registro(s) que no están en <b>CONSUMO INTERNO EQUIPO</b> ('+CONS_HUERFANOS.slice(0,4).map(function(c){return fmtF(c.fecha).slice(0,5)+' '+comEsc(c.prof)+' '+clp(c.monto);}).join(', ')+(CONS_HUERFANOS.length>4?'…':'')+'). No se están contando: pásalos a la hoja nueva.</div>';
+  }
+  function card(v,l,c){return '<div style="background:#fff;border:1px solid var(--lin);border-radius:13px;box-shadow:var(--sh);padding:12px 14px;text-align:center"><div style="font-size:21px;font-weight:900;color:'+c+'">'+v+'</div><div style="font-size:10px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.8px">'+l+'</div></div>';}
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">'
+    +card(clp(T.total),'Total a descontar','var(--neg)')
+    +card(clp(T.productos),'Compra de productos',CONS_COLOR.productos)
+    +card(clp(T.servicios),'Servicios en el salón',CONS_COLOR.servicios)
+    +card(clp(T.efectivo),'Efectivo',CONS_COLOR.efectivo)
+    +(T.sin+T.consumo>0?card(clp(T.sin+T.consumo),'Sin clasificar','var(--gris)'):'')
+    +card(clp(T.props),'Propinas del mes','var(--vrd)')
+    +card(clp(T.neta),'Propina neta','var(--vrd)')
+    +(T.pend>0?card(clp(T.pend),'Saldo pendiente','var(--roj)'):'')+'</div>';
+  h+='<div style="font-size:11.5px;color:var(--gris);margin-bottom:12px">Todo lo registrado en la hoja <b>CONSUMO INTERNO EQUIPO</b> se descuenta de las propinas del mes de cada profesional. Si lo consumido supera la propina, queda un saldo pendiente para el mes siguiente.</div>';
+  /* resumen por profesional */
+  h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>👩 Resumen por profesional</h3><span class="badge badge-rosa">'+consMesLabel(mes)+'</span></div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:right;color:var(--gris);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px"><th style="padding:8px 14px;text-align:left">Profesional</th><th style="padding:8px">Propinas</th><th style="padding:8px">Productos</th><th style="padding:8px">Servicios</th><th style="padding:8px">Efectivo</th><th style="padding:8px">Otros</th><th style="padding:8px">Total desc.</th><th style="padding:8px">Propina neta</th><th style="padding:8px 14px">Pendiente</th></tr></thead><tbody>';
+  if(!arr.length)h+='<tr><td colspan="9" style="padding:18px;text-align:center;color:var(--gris-s)">Sin propinas ni consumo registrados en este mes.</td></tr>';
+  arr.forEach(function(o){
+    h+='<tr style="border-top:1px solid var(--lin);text-align:right"><td style="padding:9px 14px;text-align:left;font-weight:700">'+comEsc(o.prof)+'</td><td style="padding:8px;color:var(--vrd)">'+clp(o.props)+'</td><td style="padding:8px">'+(o.productos?clp(o.productos):'-')+'</td><td style="padding:8px">'+(o.servicios?clp(o.servicios):'-')+'</td><td style="padding:8px">'+(o.efectivo?clp(o.efectivo):'-')+'</td><td style="padding:8px">'+((o.sin+o.consumo)?clp(o.sin+o.consumo):'-')+'</td><td style="padding:8px;font-weight:800">'+(o.total?clp(o.total):'-')+'</td><td style="padding:8px;font-weight:800;color:var(--vrd)">'+clp(o.neta)+'</td><td style="padding:8px 14px;color:var(--roj);font-weight:'+(o.pend?'800':'400')+'">'+(o.pend?clp(o.pend):'-')+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  /* detalle */
+  var det=[];
+  arr.forEach(function(o){o.items.forEach(function(c){det.push(c);});});
+  det.sort(function(a,b){return a.fecha<b.fecha?-1:a.fecha>b.fecha?1:(a.prof<b.prof?-1:1);});
+  h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>🧾 Detalle del mes</h3><span class="badge badge-rosa">'+det.length+'</span></div>';
+  if(!det.length)h+='<div style="padding:18px;text-align:center;color:var(--gris-s);font-size:12px">Sin consumo interno registrado en este mes.</div>';
+  else{
+    h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--gris);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;text-align:left"><th style="padding:8px 14px">Fecha</th><th style="padding:8px">Profesional</th><th style="padding:8px">Tipo</th><th style="padding:8px">Detalle</th><th style="padding:8px 14px;text-align:right">Monto</th></tr></thead><tbody>';
+    det.forEach(function(c){
+      h+='<tr style="border-top:1px solid var(--lin)"><td style="padding:8px 14px;white-space:nowrap">'+fmtF(c.fecha)+'</td><td style="padding:8px;font-weight:700">'+comEsc(c.prof)+'</td><td style="padding:8px;color:'+CONS_COLOR[c.cat]+';font-weight:700">'+CONS_LABEL[c.cat]+'</td><td style="padding:8px">'+(c.detalle?comEsc(c.detalle):'<span style="color:var(--gris-s)">-</span>')+'</td><td style="padding:8px 14px;text-align:right;font-weight:800">'+clp(c.monto)+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';
+  body.innerHTML=h;
 }
 
 if('serviceWorker' in navigator){
