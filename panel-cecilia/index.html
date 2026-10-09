@@ -12,6 +12,8 @@
 <meta name="apple-mobile-web-app-title" content="Panel Cecilia">
 <meta name="mobile-web-app-capable" content="yes">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
 :root{
@@ -245,6 +247,7 @@ body{font-family:'Montserrat',system-ui,sans-serif;background:var(--crema);
 
 footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margin-top:8px}
 @media(max-width:900px){.main-grid{grid-template-columns:1fr}.ficha{position:static}.semaforo{grid-template-columns:1fr 1fr}}
+#tab-comentarios .badge{font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:12px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -285,6 +288,7 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
   <button class="tab" onclick="setTab('postventa',this)">📲 Post-venta <span class="cnt" id="tcnt2">0</span></button>
   <button class="tab" onclick="setTab('estacionalidad',this)">📅 Estacionalidad</button>
   <button class="tab" onclick="setTab('resumen',this)">📋 Resumen dia</button>
+  <button class="tab" onclick="setTab('comentarios',this)">💬 Comentarios</button>
 </div>
 
 <!-- TAB CLIENTAS -->
@@ -488,6 +492,20 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
   </div>
 </div>
 
+
+<!-- TAB COMENTARIOS (resumen semanal de comentarios de clientas) -->
+<div id="tab-comentarios" style="display:none">
+  <div style="background:#fff;border:1px solid var(--lin);border-radius:13px;box-shadow:var(--sh);padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div style="font-size:10px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:1px">Semana que cierra el sabado:</div>
+    <button class="quick-btn" onclick="comMover(-1)">← Semana anterior</button>
+    <input type="date" id="comSabadoInput" style="font-family:inherit;font-size:13px;font-weight:700;color:var(--neg);background:var(--cr2);border:1.5px solid var(--lin);border-radius:9px;padding:7px 11px;outline:none;cursor:pointer" onchange="comCambiar(this.value)">
+    <button class="quick-btn" onclick="comMover(1)">Semana siguiente →</button>
+    <button class="quick-btn" onclick="comUltima()">Ultima semana con comentarios</button>
+    <div style="margin-left:auto;font-size:11px;color:var(--gris-s)" id="comInfo">—</div>
+  </div>
+  <div id="comBody"><div class="panel"><div class="empty"><div class="eico">💬</div><p>Carga el Excel del registro para ver los <b>comentarios de la semana</b>.</p></div></div></div>
+</div>
+
 </div><!-- /wrap -->
 
 <!-- MODAL WA -->
@@ -595,7 +613,7 @@ function txt(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
    TABS
 ═══════════════════════════════════════════ */
 function setTab(name,btn){
-  ['clientas','postventa','estacionalidad','resumen'].forEach(function(t){
+  ['clientas','postventa','estacionalidad','resumen','comentarios'].forEach(function(t){
     document.getElementById('tab-'+t).style.display='none';
   });
   document.getElementById('tab-'+name).style.display='';
@@ -603,6 +621,7 @@ function setTab(name,btn){
   if(btn)btn.classList.add('on');
   activeTab=name;
   if(name==='estacionalidad')renderEstac();
+  if(name==='comentarios')renderComentarios();
 }
 
 /* ═══════════════════════════════════════════
@@ -1310,11 +1329,15 @@ function procesarRegistroBuffer(arrayBuffer){
         c.profHabitual=best||c.prof;
       });
 
+      /* hoja COMENTARIOS CLIENTAS (si existe) */
+      try{parseComentarios(wb);}catch(exC){console.warn('Comentarios no leidos:',exC);COMENTARIOS=[];COM_HOJA=false;}
+      window._comSemana=null;
       /* actualizar todo */
       var diaData=renderSemaforo(ultimaFecha);
       renderCliList('');
       renderPostVenta();
       if(activeTab==='estacionalidad')renderEstac();
+      if(activeTab==='comentarios')renderComentarios();
       window._ultimaDia=ultimaFecha;window._diaData=diaData;
       if(activeTab==='resumen'){
         if(window._modoResumen==='semana')irUltimaSemana();
@@ -1464,6 +1487,579 @@ function initRegistroSync(){
   });
 }
 initRegistroSync();
+
+/* ═══════════════════════════════════════════
+   COMENTARIOS DE CLIENTAS (resumen semanal)
+═══════════════════════════════════════════ */
+var COMENTARIOS=[];
+var COM_HOJA=false;
+var COM_SIN_FECHA=0;
+window._comSemana=null;
+
+/* palabras (inicio de palabra) que suman a felicitacion / queja; peso 2 = fuerte, 1 = suave */
+var COM_POS2=['encant','amo','amor','adoro','fascin','maravill','perfect','excelent','genial','espectacular','increible','impecable','hermos','lind','bonit','preciosa','precioso','fantastic','buenisim','recomiend','recomend','agradec','felic','feliz','conforme','content','satisf','super','grato','gratitud','gust','volver','vuelvo','prefier','top'];
+var COM_POS1=['gracias','bueno','buena','buen','bien','rapid','amable','atent','profesional','cuidados','limpi','puntual','lograd'];
+var COM_NEG2=['pesim','horrible','terrible','lamentable','decepcion','desilusion','molest','queja','reclam','malisim','grosera','grosero','descort','sucio','sucia','duele','dolor','lastim','sangr','cortaron','levant','despeg','desparej','quebr','rompi','demor','atras','carisim'];
+var COM_NEG_PALABRA=['mal','malo','mala','caro','cara'];
+var COM_NEG_FRASES=['no me gust','no quede','no quedo','no volver','no vuelvo','no recomiend','nunca mas','mala atenc','mal trato','mal atend','falta de respeto','me corto','se salt','se solt','larga espera','mucha espera','espere mucho','esperar mucho','demasiado tarde'];
+var COM_TEMAS_POS=[
+  {t:'la atención y el trato',k:['atenci','trato','amable','atent','cariñ','carin','calid','simpati']},
+  {t:'el resultado de sus uñas',k:['uñas','unas','quedaron','quedo','diseño','diseno','resultado','color','esmalt','acabado','terminaci']},
+  {t:'la duración del trabajo',k:['duran','dura ']},
+  {t:'la limpieza y el ambiente',k:['limpi','ambiente','lugar','higien','local']},
+  {t:'la puntualidad y rapidez',k:['puntual','rapid','a la hora']},
+  {t:'el profesionalismo',k:['profesional','experta','experto','cuidados','dedicaci']},
+  {t:'el precio',k:['precio','barato','valor']},
+  {t:'que volverían o recomiendan el salón',k:['recomend','recomiend','volver','vuelvo','prefier']}
+];
+var COM_TEMAS_NEG=[
+  {t:'tiempos de espera o atrasos',k:['demor','atras','espera','tarde']},
+  {t:'el resultado o la duración del trabajo',k:['levant','despeg','se salt','se solt','quebr','rompi','desparej','mal hech']},
+  {t:'el trato recibido',k:['trato','grosera','grosero','descort','falta de respeto','mal atend','mala atenc']},
+  {t:'el precio',k:['caro','cara ','carisim','precio']},
+  {t:'la higiene o el dolor durante el servicio',k:['sucio','sucia','higien','duele','dolor','lastim','sangr','me corto','cortaron']}
+];
+var COM_MENC={laura:'Laura',yeimi:'Yeimi',yemi:'Yeimi',gabriela:'Gabriela',gaby:'Gabriela',cata:'Cata',catalina:'Cata',guiovi:'Guiovi',guiovanca:'Guiovi',dahiana:'Dahiana',dahyana:'Dahiana',cony:'Cony',constanza:'Cony'};
+
+function comFel(n){return n===1?'felicitación':'felicitaciones';}
+function comPdf(s){return String(s==null?'':s).replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/→/g,'->').replace(/[^\n\u0020-\u007E\u00A1-\u00FF]/g,'').replace(/ {2,}/g,' ').trim();}
+function comEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function comN(x){return String(Math.round(x*10)/10).replace('.',',');}
+function comLimpio(t){
+  var s=String(t||'');var p=s.indexOf(' - ');
+  var q=p>=0?s.indexOf(': ',p+3):-1;
+  return (q<0?s:s.slice(q+2)).trim();
+}
+function comHasStem(t,stem){
+  /* coincidencia a inicio de palabra */
+  var i=-1;
+  while((i=t.indexOf(stem,i+1))>=0){
+    if(i===0||!/[a-z0-9ñ]/.test(t.charAt(i-1)))return true;
+  }
+  return false;
+}
+function comSentimiento(texto,excelSent){
+  var t=' '+canonSearch(texto).replace(/[^a-z0-9ñ ]/g,' ').replace(/\s+/g,' ')+' ';
+  t=t.replace(/buen(os|as)\s+(dias|tardes|noches)/g,' ');
+  var neg=0,pos=0;
+  COM_NEG_FRASES.forEach(function(f){
+    if(t.indexOf(f)>=0){neg+=2;t=t.split(f).join(' ');}
+  });
+  COM_NEG2.forEach(function(w){if(comHasStem(t,w))neg+=2;});
+  /* palabras cortas (mal, caro...) solo cuentan como palabra completa */
+  COM_NEG_PALABRA.forEach(function(w){if(t.indexOf(' '+w+' ')>=0)neg+=2;});
+  COM_POS2.forEach(function(w){if(comHasStem(t,w))pos+=2;});
+  COM_POS1.forEach(function(w){if(comHasStem(t,w))pos+=1;});
+  if(neg>pos)return 'Negativo';
+  if(pos>neg){return (pos>=2||canonSearch(excelSent)==='positivo')?'Positivo':'Neutro';}
+  if(pos===0){
+    var e=canonSearch(excelSent);
+    if(e==='positivo')return 'Positivo';
+    if(e==='negativo')return 'Negativo';
+  }
+  return 'Neutro';
+}
+function comMenciones(texto){
+  var w=canonSearch(texto).replace(/[^a-z0-9ñ ]/g,' ').split(' ');
+  var out=[];
+  w.forEach(function(x){var m=COM_MENC[x];if(m&&out.indexOf(m)<0)out.push(m);});
+  return out;
+}
+function comHora(v){
+  if(typeof v==='number'&&v>=0&&v<1){var m=Math.round(v*1440);return pad(Math.floor(m/60)%24)+':'+pad(m%60);}
+  return String(v||'').trim().slice(0,5);
+}
+
+/* lee la hoja COMENTARIOS CLIENTAS del mismo Excel del registro (se llama desde procesarRegistroBuffer) */
+function parseComentarios(wb){
+  COMENTARIOS=[];COM_SIN_FECHA=0;COM_HOJA=false;
+  var sn=null;
+  wb.SheetNames.forEach(function(n){var c=canon(n);if(c.indexOf('comentario')>=0&&c.indexOf('clienta')>=0)sn=n;});
+  if(!sn)return;
+  COM_HOJA=true;
+  var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:true});
+  var hr=-1;
+  for(var i=0;i<Math.min(aoa.length,30);i++){
+    if(aoa[i].some(function(c){return canon(c)==='textowhatsapp';})){hr=i;break;}
+  }
+  if(hr<0)return;
+  var ix={};
+  aoa[hr].forEach(function(c,j){var k=canon(c);if(k&&!(k in ix))ix[k]=j;});
+  function g(row,k){return ix[k]!==undefined?row[ix[k]]:'';}
+  for(var i=hr+1;i<aoa.length;i++){
+    var r=aoa[i];
+    var raw=String(g(r,'textowhatsapp')||'').trim();
+    var limpio=String(g(r,'comentariolimpio')||'').trim();
+    if(!limpio&&raw)limpio=comLimpio(raw);
+    if(!limpio)continue;
+    var f=toISO(g(r,'fecha'));
+    if(!f){COM_SIN_FECHA++;continue;}
+    var colM=String(g(r,'manicurista')||'').trim();
+    var manic=null,origen=null;
+    if(colM){manic=normProf(colM);origen='columna';}
+    if(!manic){
+      var mm=comMenciones(limpio);
+      if(mm.length===1){manic=mm[0];origen='texto';}
+    }
+    COMENTARIOS.push({
+      fecha:f,hora:comHora(g(r,'hora')),cli:String(g(r,'remitente')||'').trim(),
+      texto:limpio,sent:comSentimiento(limpio,g(r,'sentimiento')),
+      manic:manic,origen:origen,obs:String(g(r,'observacion')||'').trim()
+    });
+  }
+  COMENTARIOS.sort(function(a,b){return a.fecha<b.fecha?-1:a.fecha>b.fecha?1:(a.hora<b.hora?-1:1);});
+}
+
+/* semana domingo→sabado, la misma que usa "Resumen dia"; cierra el sabado en/despues de la fecha dada */
+function comSabadoDe(iso){
+  var d=new Date(iso+'T12:00');
+  d.setDate(d.getDate()+((6-d.getDay()+7)%7));
+  return d;
+}
+function comRangoSemana(sat){
+  var s=new Date(sat);s.setDate(sat.getDate()-6);
+  return {start:dateToISO(s),end:dateToISO(sat)};
+}
+function comEstrellas(o){
+  if(!o.n)return 0;
+  var sc=(o.pos+0.6*o.neu)/o.n;
+  return Math.max(1,Math.round(sc*5*2)/2);
+}
+function comTemas(rows,lista){
+  var out=[];
+  lista.forEach(function(tm){
+    var n=0;
+    rows.forEach(function(r){
+      var t=' '+canonSearch(r.texto)+' ';
+      if(tm.k.some(function(k){return t.indexOf(canonSearch(k))>=0;}))n++;
+    });
+    if(n>0)out.push({t:tm.t,n:n});
+  });
+  out.sort(function(a,b){return b.n-a.n;});
+  return out;
+}
+
+function comStats(start,end){
+  var rows=COMENTARIOS.filter(function(r){return r.fecha>=start&&r.fecha<=end;});
+  var by={},sin={nombre:'Sin asignar',n:0,pos:0,neu:0,neg:0,items:[]};
+  var tot={n:rows.length,pos:0,neu:0,neg:0};
+  rows.forEach(function(r){
+    var o;
+    if(r.manic){by[r.manic]=by[r.manic]||{nombre:r.manic,n:0,pos:0,neu:0,neg:0,items:[]};o=by[r.manic];}
+    else o=sin;
+    o.n++;o.items.push(r);
+    if(r.sent==='Positivo'){o.pos++;tot.pos++;}
+    else if(r.sent==='Negativo'){o.neg++;tot.neg++;}
+    else{o.neu++;tot.neu++;}
+  });
+  /* servicios de la semana (Registro Diario) para dar contexto */
+  var serv=0,servBy={};
+  ALL_ROWS.forEach(function(r){
+    if(r.fecha>=start&&r.fecha<=end){serv++;servBy[r.prof]=(servBy[r.prof]||0)+1;}
+  });
+  var manics=Object.keys(by).map(function(k){var o=by[k];o.serv=servBy[k]||0;o.stars=comEstrellas(o);return o;});
+  manics.sort(function(a,b){return b.pos-a.pos||b.stars-a.stars||b.n-a.n||(a.nombre<b.nombre?-1:1);});
+  var conPos=manics.filter(function(o){return o.pos>0;});
+  var top=conPos.length?conPos[0].pos:0;
+  var lideres=conPos.filter(function(o){return o.pos===top;});
+  var felicitaEquipo=tot.pos>0&&tot.neg===0&&(conPos.length>=2||manics.length===0);
+  return {
+    start:start,end:end,rows:rows,total:tot.n,pos:tot.pos,neu:tot.neu,neg:tot.neg,
+    pctPos:tot.n?tot.pos/tot.n:0,
+    stars:comEstrellas({n:tot.n,pos:tot.pos,neu:tot.neu}),
+    manics:manics,sin:sin,lideres:lideres,felicitaEquipo:felicitaEquipo,
+    serv:serv,
+    temasPos:comTemas(rows.filter(function(r){return r.sent==='Positivo';}),COM_TEMAS_POS),
+    temasNeg:comTemas(rows.filter(function(r){return r.sent==='Negativo';}),COM_TEMAS_NEG)
+  };
+}
+
+function comFechaCorta(iso){var p=iso.split('-');return p[2]+'/'+p[1];}
+function comFechaLarga(iso){return fmtF(iso);}
+function comLista(arr){
+  if(arr.length<=1)return arr.join('');
+  return arr.slice(0,-1).join(', ')+' y '+arr[arr.length-1];
+}
+function comNombreCorto(c){
+  var p=String(c||'').trim().split(/\s+/);
+  if(!p[0])return 'Clienta';
+  return p[0]+(p[1]?' '+p[1].charAt(0)+'.':'');
+}
+
+/* interpretacion para el equipo (se usa en pantalla y en el PDF) */
+function comInterpretacion(s){
+  var out=[];
+  if(!s.total){
+    out.push({h:'Sin comentarios esta semana',t:'No llegaron comentarios de clientas entre el '+comFechaLarga(s.start)+' y el '+comFechaLarga(s.end)+'. Meta de la próxima semana: pedir su opinión a cada clienta al terminar el servicio y pegar sus respuestas en la hoja COMENTARIOS CLIENTAS.'});
+    return out;
+  }
+  var res='Entre el '+comFechaLarga(s.start)+' y el '+comFechaLarga(s.end)+' las clientas enviaron '+s.total+' comentario'+(s.total>1?'s':'')+': '+s.pos+' '+comFel(s.pos)+' ('+Math.round(s.pctPos*100)+'%), '+s.neu+' neutro'+(s.neu!==1?'s':'')+' y '+s.neg+' queja'+(s.neg!==1?'s':'')+'. La calificación del equipo es de '+comN(s.stars)+' de 5 estrellas.';
+  if(s.pctPos>=0.85&&s.neg===0)res+=' Es una semana excelente: las clientas están muy contentas con el trabajo del equipo.';
+  else if(s.pctPos>=0.6&&s.neg===0)res+=' Buena semana: la mayoría de las clientas quedó contenta y no hubo quejas.';
+  else if(s.neg>0)res+=' Hubo '+(s.neg>1?'quejas':'una queja')+' que conviene atender de inmediato, aunque el balance general se mantiene '+(s.pctPos>=0.5?'positivo':'por mejorar')+'.';
+  else res+=' Hay mucho comentario neutro: es una oportunidad para sorprender a las clientas y que se animen a felicitar.';
+  out.push({h:'Resumen de la semana',t:res});
+  if(s.serv){
+    var por=Math.round(s.total/s.serv*100);
+    out.push({h:'Qué tan representativo es',t:'En la semana se registraron '+s.serv+' servicios y recibimos '+s.total+' comentario'+(s.total>1?'s':'')+' (aprox. '+por+'% de los servicios). '+(por<20?'Son pocos comentarios, así que las estrellas son una referencia y no una nota definitiva: mientras más clientas opinen, más justa es la evaluación.':'Es una muy buena participación de las clientas.')});
+  }
+  if(s.temasPos.length){
+    var tp=s.temasPos.slice(0,3).map(function(x){return x.t;});
+    out.push({h:'Lo que más valoran las clientas',t:'Las felicitaciones mencionan sobre todo '+comLista(tp)+'. Esto es lo que hay que mantener: sigan haciéndolo igual y recuerden que cada clienta contenta recomienda al salón.'});
+  }
+  /* por manicurista */
+  var lineas=[];
+  s.manics.forEach(function(o){
+    var l=o.nombre+': '+o.pos+' '+comFel(o.pos)+(o.neu?', '+o.neu+' neutro'+(o.neu>1?'s':''):'')+(o.neg?', '+o.neg+' queja'+(o.neg>1?'s':''):'')+'. Calificación: '+comN(o.stars)+' estrellas';
+    if(o.n<3)l+=' (pocos comentarios, nota referencial)';
+    lineas.push(l);
+  });
+  if(lineas.length)out.push({h:'Cómo le fue a cada manicurista',t:lineas.join('\n')});
+  if(s.felicitaEquipo)out.push({h:'Felicitación al equipo',t:'Todas las manicuristas que recibieron comentarios obtuvieron solo felicitaciones y ninguna queja. ¡Felicitaciones a todo el equipo! Ese trabajo en conjunto es lo que hace que las clientas vuelvan.'});
+  else if(s.lideres.length===1)out.push({h:'Más felicitada de la semana',t:'¡Felicitaciones a '+s.lideres[0].nombre+'! Fue la más felicitada por las clientas ('+s.lideres[0].pos+' '+comFel(s.lideres[0].pos)+'). Su forma de atender es un ejemplo para el resto del equipo.'});
+  else if(s.lideres.length>1)out.push({h:'Más felicitadas de la semana',t:'¡Felicitaciones a '+comLista(s.lideres.map(function(o){return o.nombre;}))+'! Empataron como las más felicitadas ('+s.lideres[0].pos+' '+comFel(s.lideres[0].pos)+' cada una).'});
+  /* mejoras */
+  var mej=[];
+  if(s.neg>0){
+    var tn=s.temasNeg.slice(0,2).map(function(x){return x.t;});
+    mej.push('Contactar esta semana a la clienta de cada queja, agradecer que avisó y ofrecer corregirlo'+(tn.length?' (se habla de '+comLista(tn)+')':'')+'. Conversar el caso en privado con la manicurista, sin exponerla frente al grupo.');
+  }
+  if(s.neu>0)mej.push('Los comentarios neutros dicen "todo bien" pero no emocionan: preguntar a esas clientas qué podría ser mejor y ofrecerles una pequeña sorpresa (un diseño extra, un detalle) en su próxima visita.');
+  if(s.sin.n>0)mej.push('Hay '+s.sin.n+' comentario'+(s.sin.n>1?'s':'')+' sin manicurista asignada. Completa la columna "Manicurista" en la hoja COMENTARIOS CLIENTAS para que cuenten en las estrellas de cada una.');
+  mej.push('Meta de la próxima semana: pedir su opinión a todas las clientas al terminar el servicio y compartir las felicitaciones con el equipo cada semana.');
+  out.push({h:'Qué mejorar y próximos pasos',t:mej.map(function(x){return '• '+x;}).join('\n')});
+  return out;
+}
+
+/* mensaje corto para el grupo de WhatsApp (sin nombres de clientas ni de quien tuvo quejas) */
+function comMensajeWA(s){
+  var L=[];
+  L.push('🌸 *Beauty Kuyen · Comentarios de la semana*');
+  L.push('📅 '+comFechaCorta(s.start)+' al '+comFechaCorta(s.end));
+  if(!s.total){
+    L.push('Esta semana no llegaron comentarios de clientas.');
+    L.push('🎯 Meta: pedir su opinión a cada clienta al terminar el servicio.');
+    return L.join('\n');
+  }
+  L.push('💌 Recibimos '+s.total+' comentario'+(s.total>1?'s':'')+': '+s.pos+' '+comFel(s.pos)+' 💖 ('+Math.round(s.pctPos*100)+'%)');
+  L.push('⭐ Calificación del equipo: '+comN(s.stars)+' de 5');
+  if(s.manics.length){
+    L.push('✨ '+s.manics.map(function(o){return o.nombre+' '+comN(o.stars)+'⭐';}).join(' · '));
+  }
+  if(s.felicitaEquipo)L.push('👏 ¡Felicitaciones a todo el equipo! Solo recibimos cariño de las clientas, seguimos así.');
+  else if(s.lideres.length===1)L.push('🏆 Más felicitada: *'+s.lideres[0].nombre+'* ('+s.lideres[0].pos+') ¡Gracias por tu cariño y excelente trabajo!');
+  else if(s.lideres.length>1)L.push('🏆 Más felicitadas: *'+comLista(s.lideres.map(function(o){return o.nombre;}))+'* ¡Excelente trabajo!');
+  if(s.temasPos.length)L.push('💡 Lo que más valoran: '+s.temasPos[0].t+(s.temasPos[1]?' y '+s.temasPos[1].t:'')+'.');
+  if(s.neg>0)L.push('🔧 Hubo '+s.neg+' comentario'+(s.neg>1?'s':'')+' para mejorar; lo conversamos en privado.');
+  L.push('🎯 Meta: pedir su opinión a cada clienta al terminar el servicio.');
+  return L.join('\n');
+}
+
+/* ---------- pantalla ---------- */
+function comStarsHtml(v,size){
+  var h='';size=size||16;
+  for(var i=1;i<=5;i++){
+    var st;
+    if(v>=i)st='color:#C9A227';
+    else if(v>=i-0.5)st='background:linear-gradient(90deg,#C9A227 50%,#d9d0c8 50%);-webkit-background-clip:text;background-clip:text;color:transparent';
+    else st='color:#d9d0c8';
+    h+='<span style="font-size:'+size+'px;line-height:1;'+st+'">★</span>';
+  }
+  return h;
+}
+function comTipoBadge(sent){
+  var c=sent==='Positivo'?'badge-vrd':(sent==='Negativo'?'badge-roj':'badge-nar');
+  var l=sent==='Positivo'?'Felicitación':(sent==='Negativo'?'Queja':'Neutro');
+  return '<span class="badge '+c+'" style="'+(sent==='Negativo'?'background:var(--roj-s);color:var(--roj)':'')+'">'+l+'</span>';
+}
+function comSetSemana(sat){
+  var r=comRangoSemana(sat);
+  window._comSemana=r;
+  var inp=document.getElementById('comSabadoInput');
+  if(inp)inp.value=r.end;
+  renderComentarios();
+}
+function comCambiar(iso){
+  if(!iso)return;
+  comSetSemana(comSabadoDe(iso));
+}
+function comMover(delta){
+  if(!window._comSemana){comUltima();return;}
+  var sat=new Date(window._comSemana.end+'T12:00');
+  sat.setDate(sat.getDate()+7*delta);
+  comSetSemana(sat);
+}
+function comUltima(){
+  if(!COMENTARIOS.length){window._comSemana=null;renderComentarios();return;}
+  comSetSemana(comSabadoDe(COMENTARIOS[COMENTARIOS.length-1].fecha));
+}
+function renderComentarios(){
+  var body=document.getElementById('comBody');
+  if(!body)return;
+  var info=document.getElementById('comInfo');
+  if(!ALL_ROWS.length&&!COM_HOJA){
+    body.innerHTML='<div class="panel"><div class="empty"><div class="eico">💬</div><p>Carga el Excel del registro para ver los <b>comentarios de la semana</b>.</p></div></div>';
+    if(info)info.textContent='—';
+    return;
+  }
+  if(!COM_HOJA){
+    body.innerHTML='<div class="panel"><div class="empty"><div class="eico">💬</div><p>El Excel cargado no tiene la hoja <b>COMENTARIOS CLIENTAS</b>.</p></div></div>';
+    if(info)info.textContent='Sin hoja de comentarios';
+    return;
+  }
+  if(!window._comSemana){
+    if(COMENTARIOS.length){comUltima();return;}
+    body.innerHTML='<div class="panel"><div class="empty"><div class="eico">💬</div><p>Aún no hay comentarios en la hoja <b>COMENTARIOS CLIENTAS</b>. Pega las respuestas de las clientas y vuelve a cargar.</p></div></div>';
+    if(info)info.textContent='Sin comentarios';
+    return;
+  }
+  var w=window._comSemana,s=comStats(w.start,w.end);
+  window._comStats=s;
+  var enCurso=w.end>dateToISO(new Date());
+  if(info){
+    info.textContent=comFechaLarga(w.start)+' al '+comFechaLarga(w.end)+(enCurso?' · semana en curso':'')+' · '+s.total+' comentario'+(s.total!==1?'s':'');
+    info.style.color=s.total?'var(--vrd)':'var(--roj)';
+  }
+  var h='';
+  /* tarjetas */
+  function card(v,l,c){return '<div style="background:#fff;border:1px solid var(--lin);border-radius:13px;box-shadow:var(--sh);padding:12px 14px;text-align:center"><div style="font-size:24px;font-weight:900;color:'+c+'">'+v+'</div><div style="font-size:10px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.8px">'+l+'</div></div>';}
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px">'
+    +card(s.total,'Comentarios','var(--neg)')+card(s.pos,'Felicitaciones','var(--vrd)')+card(s.neu,'Neutros','var(--nar)')+card(s.neg,'Quejas','var(--roj)')
+    +'<div style="background:#fff;border:1px solid var(--lin);border-radius:13px;box-shadow:var(--sh);padding:12px 14px;text-align:center;grid-column:span 2"><div>'+comStarsHtml(s.stars,22)+'</div><div style="font-size:10px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.8px;margin-top:3px">Equipo · '+(s.total?comN(s.stars)+' de 5':'—')+'</div></div></div>';
+  /* banner */
+  var ban='';
+  if(!s.total)ban='<b>Sin comentarios en esta semana.</b> Prueba con otra semana o carga el Excel actualizado.';
+  else if(s.felicitaEquipo)ban='👏 <b>¡Felicitaciones a todo el equipo!</b> Solo felicitaciones y ninguna queja esta semana.'+(s.lideres.length===1?' Destacada: <b>'+comEsc(s.lideres[0].nombre)+'</b> ('+s.lideres[0].pos+').':'');
+  else if(s.lideres.length===1)ban='🏆 <b>Más felicitada de la semana: '+comEsc(s.lideres[0].nombre)+'</b> ('+s.lideres[0].pos+' '+comFel(s.lideres[0].pos)+'). ¡Felicitaciones!';
+  else if(s.lideres.length>1)ban='🏆 <b>Más felicitadas (empate): '+comEsc(comLista(s.lideres.map(function(o){return o.nombre;})))+'</b>. ¡Felicitaciones!';
+  else ban='Esta semana no hubo felicitaciones. Meta: pedir la opinión de cada clienta al terminar.';
+  h+='<div style="background:var(--dor-s);border:1px solid var(--dor);border-radius:13px;padding:12px 16px;margin-bottom:14px;font-size:13px">'+ban+'</div>';
+  if(s.sin.n)h+='<div style="background:var(--nar-s);border:1px solid var(--nar);border-radius:13px;padding:10px 16px;margin-bottom:14px;font-size:12px;color:var(--nar)">⚠️ '+s.sin.n+' comentario'+(s.sin.n>1?'s':'')+' sin manicurista. Completa la columna <b>Manicurista</b> en la hoja COMENTARIOS CLIENTAS y vuelve a cargar para que cuenten en las estrellas.</div>';
+  /* tabla por manicurista */
+  if(s.manics.length){
+    h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>⭐ Estrellas por manicurista</h3><span style="font-size:10.5px;color:var(--gris-s)">Según los comentarios de la semana</span></div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--gris);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px"><th style="padding:8px 14px">Manicurista</th><th style="padding:8px 8px;text-align:center">Comentarios</th><th style="padding:8px 8px;text-align:center">Felicitaciones</th><th style="padding:8px 8px;text-align:center">Neutros</th><th style="padding:8px 8px;text-align:center">Quejas</th><th style="padding:8px 14px">Estrellas</th></tr></thead><tbody>';
+    s.manics.forEach(function(o){
+      var lider=s.lideres.length===1&&s.lideres[0]===o;
+      h+='<tr style="border-top:1px solid var(--lin)"><td style="padding:9px 14px;font-weight:700">'+comEsc(o.nombre)+(lider?' 🏆':'')+'</td><td style="text-align:center">'+o.n+'</td><td style="text-align:center;color:var(--vrd);font-weight:700">'+o.pos+'</td><td style="text-align:center;color:var(--nar)">'+o.neu+'</td><td style="text-align:center;color:var(--roj);font-weight:'+(o.neg?'700':'400')+'">'+o.neg+'</td><td style="padding:9px 14px;white-space:nowrap">'+comStarsHtml(o.stars,17)+' <span style="font-size:11px;color:var(--gris);margin-left:4px">'+comN(o.stars)+(o.n<3?' · pocos comentarios':'')+'</span></td></tr>';
+    });
+    h+='</tbody></table></div></div>';
+  }
+  /* interpretacion */
+  var interp=comInterpretacion(s);
+  h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>🧭 Interpretación para el equipo</h3><span style="font-size:10.5px;color:var(--gris-s)">Va dentro del PDF</span></div><div style="padding:14px 16px">';
+  interp.forEach(function(b){
+    h+='<div style="margin-bottom:11px"><div style="font-size:11px;font-weight:800;color:var(--rosa);text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px">'+comEsc(b.h)+'</div><div style="font-size:12.5px;line-height:1.65;white-space:pre-wrap;color:var(--tinta)">'+comEsc(b.t)+'</div></div>';
+  });
+  h+='</div></div>';
+  /* comentarios */
+  if(s.rows.length){
+    h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>💬 Lo que dijeron las clientas</h3><span class="badge badge-rosa">'+s.rows.length+'</span></div><div style="padding:6px 16px 12px">';
+    s.rows.forEach(function(r){
+      h+='<div style="padding:9px 0;border-top:1px solid var(--lin)"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--gris);margin-bottom:3px"><b style="color:var(--tinta)">'+comEsc(comNombreCorto(r.cli))+'</b><span>'+comFechaCorta(r.fecha)+(r.hora?' '+comEsc(r.hora):'')+'</span>'+comTipoBadge(r.sent)+'<span style="margin-left:auto">'+(r.manic?'Manicurista: <b>'+comEsc(r.manic)+'</b>'+(r.origen==='texto'?' <i>(según el texto)</i>':''):'<b style="color:var(--nar)">Sin manicurista</b>')+'</span></div><div style="font-size:12.5px;line-height:1.55">'+comEsc(r.texto)+'</div></div>';
+    });
+    h+='</div></div>';
+  }
+  /* WhatsApp */
+  var wa=comMensajeWA(s);
+  window._comWA=wa;
+  h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>💌 Mensaje corto para el grupo de WhatsApp</h3><span style="font-size:10px;color:var(--gris-s)">Sin nombres de clientas</span></div><div style="padding:14px 16px"><div style="background:var(--cr2);border-radius:10px;padding:13px 14px;font-size:12px;line-height:1.75;white-space:pre-wrap;border:1px solid var(--lin);color:var(--tinta)">'+comEsc(wa)+'</div><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-sm btn-cargar" onclick="comCopiarWA()">📋 Copiar para WhatsApp</button><button class="btn-sm" style="background:#25d366;color:#fff" onclick="comAbrirWA()">💬 Abrir WhatsApp</button><span id="comCopyOk" style="font-size:11px;color:var(--vrd);font-weight:700;display:none;align-self:center">✓ Copiado!</span></div></div></div>';
+  /* descarga */
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px"><button class="btn-sm btn-cargar" style="padding:11px 18px;font-size:12.5px" onclick="comDescargarPDF()">📄 Descargar informe PDF de la semana</button><button class="btn-sm btn-refresh" style="padding:11px 18px;font-size:12.5px" onclick="comCompartirPDF()">📤 Compartir PDF</button></div>';
+  body.innerHTML=h;
+}
+function comCopiarWA(){
+  var msg=window._comWA||'';
+  navigator.clipboard.writeText(msg).catch(function(){
+    var t=document.createElement('textarea');t.value=msg;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);
+  });
+  var ok=document.getElementById('comCopyOk');
+  if(ok){ok.style.display='inline';setTimeout(function(){ok.style.display='none';},2000);}
+}
+function comAbrirWA(){window.open('https://api.whatsapp.com/send?text='+encodeURIComponent(window._comWA||''),'_blank');}
+
+/* ---------- PDF ---------- */
+function comDrawStar(doc,cx,cy,r,fill){
+  var pts=[];
+  for(var i=0;i<10;i++){var a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*0.42:r;pts.push([cx+rr*Math.cos(a),cy+rr*Math.sin(a)]);}
+  var segs=[];for(var j=1;j<pts.length;j++)segs.push([pts[j][0]-pts[j-1][0],pts[j][1]-pts[j-1][1]]);
+  function shape(color){doc.setFillColor(color[0],color[1],color[2]);doc.lines(segs,pts[0][0],pts[0][1],[1,1],'F',true);}
+  shape([225,216,208]);
+  if(fill>=1){shape([201,162,39]);}
+  else if(fill>0){
+    doc.saveGraphicsState();
+    doc.rect(cx-r-1,cy-r-1,r+1,2*r+2,null);doc.clip();doc.discardPath();
+    shape([201,162,39]);
+    doc.restoreGraphicsState();
+  }
+}
+function comDrawStars(doc,x,cy,r,v){
+  for(var i=1;i<=5;i++)comDrawStar(doc,x+r+(i-1)*(2*r+3),cy,r,v>=i?1:(v>=i-0.5?0.5:0));
+  return 5*(2*r)+4*3;
+}
+function comBuildPDF(s){
+  var jsPDF=window.jspdf&&window.jspdf.jsPDF;
+  if(!jsPDF||!jsPDF.API.autoTable){alert('No se pudo cargar el generador de PDF. Revisa tu conexión a internet y vuelve a intentar.');return null;}
+  var doc=new jsPDF({orientation:'portrait',unit:'pt',format:'a4'});
+  var W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=34;
+  var ROSA=[196,85,106],DOR=[201,162,39],VRD=[30,122,69],ROJ=[176,53,53],NAR=[196,106,26],TINTA=[45,40,48],GRIS=[111,101,92];
+
+  /* encabezado */
+  doc.setFillColor(251,248,244);doc.rect(0,0,W,86,'F');
+  doc.setFillColor(ROSA[0],ROSA[1],ROSA[2]);doc.rect(0,0,W,4,'F');
+  try{
+    var im=document.querySelector('.header img');
+    if(im&&im.src.indexOf('data:')===0){
+      doc.saveGraphicsState();
+      doc.circle(M+25,45,25,null);doc.clip();doc.discardPath();
+      doc.addImage(im.src,'JPEG',M,20,50,50);
+      doc.restoreGraphicsState();
+      doc.setDrawColor(DOR[0],DOR[1],DOR[2]);doc.setLineWidth(1.2);doc.circle(M+25,45,25,'S');
+    }
+  }catch(e){}
+  doc.setTextColor(TINTA[0],TINTA[1],TINTA[2]);doc.setFont('helvetica','bold');doc.setFontSize(10);
+  doc.text('BEAUTY KUYEN',M+64,34);
+  doc.setFontSize(17);doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]);
+  doc.text('Resumen semanal de comentarios de clientas',M+64,54);
+  doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(GRIS[0],GRIS[1],GRIS[2]);
+  doc.text('Semana del '+comFechaLarga(s.start)+' al '+comFechaLarga(s.end)+'   |   Generado el '+comFechaLarga(dateToISO(new Date())),M+64,71);
+  var y=104;
+
+  /* cifras */
+  var boxes=[['Comentarios',s.total,TINTA],['Felicitaciones',s.pos,VRD],['Neutros',s.neu,NAR],['Quejas',s.neg,ROJ]];
+  var bw=(W-2*M-3*8-170)/4;
+  boxes.forEach(function(b,i){
+    var x=M+i*(bw+8);
+    doc.setFillColor(250,246,247);doc.setDrawColor(236,228,220);doc.roundedRect(x,y,bw,52,6,6,'FD');
+    doc.setFont('helvetica','bold');doc.setFontSize(20);doc.setTextColor(b[2][0],b[2][1],b[2][2]);
+    doc.text(String(b[1]),x+bw/2,y+27,{align:'center'});
+    doc.setFontSize(7.5);doc.setTextColor(GRIS[0],GRIS[1],GRIS[2]);
+    doc.text(b[0].toUpperCase(),x+bw/2,y+42,{align:'center'});
+  });
+  var sx=M+4*(bw+8);
+  doc.setFillColor(253,246,227);doc.setDrawColor(DOR[0],DOR[1],DOR[2]);doc.roundedRect(sx,y,W-M-sx,52,6,6,'FD');
+  var sw=5*12+4*3;
+  comDrawStars(doc,sx+((W-M-sx)-sw)/2,y+18,6,s.stars);
+  doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(GRIS[0],GRIS[1],GRIS[2]);
+  doc.text('EQUIPO · '+(s.total?comN(s.stars)+' DE 5':'SIN DATOS'),sx+(W-M-sx)/2,y+42,{align:'center'});
+  y+=66;
+
+  /* felicitacion */
+  var ban,bsub='';
+  if(!s.total)ban='Sin comentarios esta semana';
+  else if(s.felicitaEquipo){ban='¡Felicitaciones a todo el equipo!';bsub='Solo felicitaciones y ninguna queja esta semana.'+(s.lideres.length===1?' Destacada: '+s.lideres[0].nombre+' ('+s.lideres[0].pos+').':'');}
+  else if(s.lideres.length===1){ban='Más felicitada de la semana: '+s.lideres[0].nombre;bsub=s.lideres[0].pos+' '+comFel(s.lideres[0].pos)+' de las clientas. ¡Felicitaciones!';}
+  else if(s.lideres.length>1){ban='Más felicitadas (empate): '+comLista(s.lideres.map(function(o){return o.nombre;}));bsub='¡Felicitaciones por su excelente trabajo!';}
+  else{ban='Esta semana no hubo felicitaciones';bsub='Meta: pedir la opinión de cada clienta al terminar el servicio.';}
+  ban=comPdf(ban);bsub=comPdf(bsub);
+  doc.setFillColor(253,246,227);doc.setDrawColor(DOR[0],DOR[1],DOR[2]);doc.setLineWidth(0.8);doc.roundedRect(M,y,W-2*M,bsub?46:34,7,7,'FD');
+  comDrawStar(doc,M+22,y+(bsub?23:17),9,1);
+  doc.setFont('helvetica','bold');doc.setFontSize(12.5);doc.setTextColor(TINTA[0],TINTA[1],TINTA[2]);
+  doc.text(ban,M+40,y+(bsub?20:21));
+  if(bsub){doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(GRIS[0],GRIS[1],GRIS[2]);doc.text(doc.splitTextToSize(bsub,W-2*M-56),M+40,y+35);}
+  y+=(bsub?46:34)+14;
+
+  /* tabla por manicurista */
+  if(s.manics.length){
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]);doc.text('Estrellas por manicurista',M,y);
+    var body=s.manics.map(function(o){return [comPdf(o.nombre)+(s.lideres.length===1&&s.lideres[0]===o?'  (más felicitada)':''),String(o.n),String(o.pos),String(o.neu),String(o.neg),'',comN(o.stars)+(o.n<3?'  (pocos comentarios)':'')];});
+    doc.autoTable({
+      startY:y+6,margin:{left:M,right:M},theme:'plain',
+      head:[['Manicurista','Total','Felicit.','Neutros','Quejas','Estrellas','Puntaje']],body:body,
+      styles:{fontSize:8.8,cellPadding:4.5,textColor:TINTA,valign:'middle'},
+      headStyles:{fillColor:ROSA,textColor:255,fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[250,246,247]},
+      columnStyles:{0:{cellWidth:118,fontStyle:'bold'},1:{halign:'center',cellWidth:42},2:{halign:'center',cellWidth:42,textColor:VRD,fontStyle:'bold'},3:{halign:'center',cellWidth:42,textColor:NAR},4:{halign:'center',cellWidth:42,textColor:ROJ},5:{cellWidth:74},6:{}},
+      didDrawCell:function(d){
+        if(d.section==='body'&&d.column.index===5){
+          comDrawStars(doc,d.cell.x+5,d.cell.y+d.cell.height/2,5.2,s.manics[d.row.index].stars);
+        }
+      }
+    });
+    y=doc.lastAutoTable.finalY+16;
+  }
+
+  /* interpretacion */
+  function need(h){if(y+h>H-46){doc.addPage();y=40;}}
+  need(40);
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]);doc.text('Interpretación de los resultados para el equipo',M,y);y+=6;
+  comInterpretacion(s).forEach(function(b){
+    b={h:comPdf(b.h),t:comPdf(b.t)};
+    doc.setFont('helvetica','normal');doc.setFontSize(9.6);
+    var lines=[];
+    String(b.t).split('\n').forEach(function(p){doc.splitTextToSize(p,W-2*M-14).forEach(function(l,i){lines.push(i===0?l:'   '+l);});});
+    need(18+lines.length*13);
+    y+=14;
+    doc.setFont('helvetica','bold');doc.setFontSize(8.6);doc.setTextColor(DOR[0]-30,DOR[1]-40,10);doc.text(b.h.toUpperCase(),M+6,y);
+    doc.setFont('helvetica','normal');doc.setFontSize(9.6);doc.setTextColor(TINTA[0],TINTA[1],TINTA[2]);
+    lines.forEach(function(l){y+=13;if(y>H-46){doc.addPage();y=46;}doc.text(l,M+6,y);});
+    y+=2;
+  });
+  y+=14;
+
+  /* comentarios */
+  if(s.rows.length){
+    need(60);
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]);doc.text('Lo que dijeron las clientas',M,y);
+    doc.autoTable({
+      startY:y+6,margin:{left:M,right:M,bottom:44},theme:'plain',
+      head:[['Fecha','Clienta','Manicurista','Tipo','Comentario']],
+      body:s.rows.map(function(r){return [comFechaCorta(r.fecha),comPdf(comNombreCorto(r.cli)),r.manic?(comPdf(r.manic)+(r.origen==='texto'?' *':'')):'Sin asignar',r.sent==='Positivo'?'Felicitación':(r.sent==='Negativo'?'Queja':'Neutro'),comPdf(r.texto)];}),
+      styles:{fontSize:8.4,cellPadding:4,textColor:TINTA,valign:'top'},
+      headStyles:{fillColor:ROSA,textColor:255,fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[250,246,247]},
+      columnStyles:{0:{cellWidth:36},1:{cellWidth:70},2:{cellWidth:72},3:{cellWidth:58,fontStyle:'bold'},4:{}},
+      didParseCell:function(d){
+        if(d.section==='body'&&d.column.index===3){
+          var t=d.cell.raw;d.cell.styles.textColor=t==='Felicitación'?VRD:(t==='Queja'?ROJ:NAR);
+        }
+      }
+    });
+    y=doc.lastAutoTable.finalY+8;
+    if(s.rows.some(function(r){return r.origen==='texto';})){
+      need(14);doc.setFont('helvetica','italic');doc.setFontSize(7.8);doc.setTextColor(GRIS[0],GRIS[1],GRIS[2]);
+      doc.text('* Manicurista tomada del nombre que aparece en el comentario (la columna Manicurista del Excel estaba vacía).',M,y+6);y+=14;
+    }
+  }
+
+  /* mensaje whatsapp */
+  var wa=comMensajeWA(s).replace(/[^ -~ -ÿ\n]/g,'').replace(/\*/g,'');
+  var wl=[];wa.split('\n').forEach(function(p){p=p.replace(/^\s+/,'');doc.splitTextToSize(p,W-2*M-24).forEach(function(l){wl.push(l);});});
+  var bh=26+wl.length*12.5;
+  need(bh+30);
+  y+=14;
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]);doc.text('Mensaje corto para el grupo de WhatsApp',M,y);
+  doc.setFillColor(236,250,242);doc.setDrawColor(150,210,175);doc.roundedRect(M,y+8,W-2*M,bh,7,7,'FD');
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(TINTA[0],TINTA[1],TINTA[2]);
+  var yy=y+24;wl.forEach(function(l){doc.text(l,M+12,yy);yy+=12.5;});
+
+  /* pie */
+  var n=doc.getNumberOfPages();
+  for(var p=1;p<=n;p++){
+    doc.setPage(p);doc.setDrawColor(236,228,220);doc.setLineWidth(0.6);doc.line(M,H-32,W-M,H-32);
+    doc.setFont('helvetica','normal');doc.setFontSize(7.8);doc.setTextColor(GRIS[0],GRIS[1],GRIS[2]);
+    doc.text('Beauty Kuyen · Informe semanal de comentarios · Uso interno del equipo',M,H-20);
+    doc.text('Página '+p+' de '+n,W-M,H-20,{align:'right'});
+  }
+  return {doc:doc,name:'comentarios_clientas_semana_'+s.start+'_al_'+s.end+'.pdf'};
+}
+function comDescargarPDF(){
+  var s=window._comStats;if(!s)return;
+  var b=comBuildPDF(s);if(b)b.doc.save(b.name);
+}
+function comCompartirPDF(){
+  var s=window._comStats;if(!s)return;
+  var b=comBuildPDF(s);if(!b)return;
+  try{
+    var blob=b.doc.output('blob');
+    var file=new File([blob],b.name,{type:'application/pdf'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      navigator.share({files:[file],title:'Comentarios de la semana',text:window._comWA||''}).catch(function(){});
+      return;
+    }
+  }catch(e){}
+  b.doc.save(b.name);
+}
+
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
     navigator.serviceWorker.register('sw.js').catch(function(e){console.warn('SW no registrado:',e);});
