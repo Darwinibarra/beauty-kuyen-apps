@@ -191,6 +191,7 @@ async function linkRegistro(){
     await regDbSetHandle(handle);
     document.getElementById('btnRefreshRegistro').disabled=false;
     await refreshRegistro();
+    const c=document.getElementById('chkAutoPoll'); if(c&&c.checked) setAutoPoll(true);
   }catch(e){ if(e.name!=='AbortError') setSyncStatus('⚠ No se pudo vincular: '+e.message); }
 }
 
@@ -233,7 +234,7 @@ async function initRegistroSync(){
   document.getElementById('btnLinkRegistro').addEventListener('click', linkRegistro);
   document.getElementById('btnRefreshRegistro').addEventListener('click', refreshRegistro);
   const chk=document.getElementById('chkAutoPoll');
-  chk.checked = localStorage.getItem('bk_launcher_autopoll')==='1';
+  chk.checked = localStorage.getItem('bk_launcher_autopoll')!=='0'; // activada por defecto; se desactiva desmarcando la casilla
   chk.addEventListener('change', ()=>setAutoPoll(chk.checked));
   const handle = await regDbGetHandle().catch(()=>null);
   if(handle){

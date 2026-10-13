@@ -262,6 +262,7 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
   <div class="hright">
     <div class="fecha-badge" id="fechaHoy">—</div>
     <div class="fecha-badge" id="syncStatus" style="display:none">Sin archivo vinculado</div>
+    <label class="fecha-badge" id="lblAutoPoll" style="display:none;cursor:pointer;white-space:nowrap"><input type="checkbox" id="chkAutoPoll" style="vertical-align:middle;margin-right:4px">Revisar cambios cada 5 min</label>
     <button class="btn-sm btn-refresh" id="btnRefreshRegistro" style="display:none">🔄 Actualizar</button>
     <button class="btn-sm btn-cargar" id="btnLinkRegistro" style="display:none">📌 Vincular archivo</button>
     <label class="btn-sm btn-cargar" for="fileInput">📂 Cargar Excel</label>
@@ -1483,7 +1484,7 @@ function linkRegistro(){
   }).then(function(){
     document.getElementById('btnRefreshRegistro').disabled=false;
     return refreshRegistro();
-  }).catch(function(e){if(e.name!=='AbortError')setSyncStatus('⚠ No se pudo vincular: '+e.message);});
+  }).then(function(){var c=document.getElementById('chkAutoPoll');if(c&&c.checked)setAutoPoll(true);}).catch(function(e){if(e.name!=='AbortError')setSyncStatus('⚠ No se pudo vincular: '+e.message);});
 }
 
 function refreshRegistro(){
@@ -1520,11 +1521,16 @@ function initRegistroSync(){
   document.getElementById('btnLinkRegistro').style.display='inline-flex';
   document.getElementById('btnLinkRegistro').addEventListener('click',linkRegistro);
   document.getElementById('btnRefreshRegistro').addEventListener('click',refreshRegistro);
+  /* revision automatica cada 5 min: activada por defecto, se desactiva desmarcando la casilla */
+  var chkAuto=document.getElementById('chkAutoPoll');
+  document.getElementById('lblAutoPoll').style.display='inline-block';
+  chkAuto.checked=localStorage.getItem('bk_cecilia_autopoll')!=='0';
+  chkAuto.addEventListener('change',function(){setAutoPoll(chkAuto.checked);});
   regDbGetHandle().catch(function(){return null;}).then(function(handle){
     if(handle){
       document.getElementById('btnRefreshRegistro').disabled=false;
       refreshRegistro().then(function(){
-        if(localStorage.getItem('bk_cecilia_autopoll')==='1')setAutoPoll(true);
+        if(chkAuto.checked)setAutoPoll(true);
       });
     }
   });
