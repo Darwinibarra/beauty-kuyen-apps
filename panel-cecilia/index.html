@@ -967,6 +967,16 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   var canjes=rows.filter(function(r){return r.gift;});
   var canjeTotal=canjes.reduce(function(s,r){return s+(r.precio-(r.giftAdic||0));},0);
   var gi=giftResumen(canjes,canjeTotal);
+  /* Esmaltado permanente Cuidado Superior: servicio premium, destacado en negrita y verde */
+  var premRows=rows.filter(function(r){return isPremiumSvc(r.serv);});
+  var premTot={},premPer={};
+  ALL_ROWS.forEach(function(r){if(isPremiumSvc(r.serv))premTot[r.prof]=(premTot[r.prof]||0)+1;});
+  premRows.forEach(function(r){premPer[r.prof]=(premPer[r.prof]||0)+1;});
+  var premAll=Object.keys(premTot).reduce(function(a,k){return a+premTot[k];},0);
+  var premNames=Object.keys(premTot).sort(function(a,b){return (premPer[b]||0)-(premPer[a]||0)||premTot[b]-premTot[a];});
+  var premHtml=frow('<b style="color:var(--vrd)">⭐ Cuidado Superior</b>','<b style="color:var(--vrd)">'+premRows.length+(esSemana?' en la semana':' hoy')+' · '+premAll+' en total</b>')+
+    (premNames.length?premNames.map(function(k){return '<div style="font-size:10.5px;color:var(--vrd);font-weight:800;padding:3px 0 0 4px">⭐ '+k+': '+(premPer[k]||0)+' en el periodo · '+premTot[k]+' en total</div>';}).join(''):'<div style="font-size:10.5px;color:var(--gris-s);padding:3px 0 0 4px">Todavia nadie lo ha realizado. ¡Es una gran oportunidad!</div>');
+  var premMsg='\n\n⭐ Esmaltado permanente Cuidado Superior: '+premRows.length+' en el periodo ('+premAll+' en total)'+(premNames.length?'\n'+premNames.map(function(k){return '  '+k+': '+(premPer[k]||0)+' en el periodo / '+premTot[k]+' en total';}).join('\n'):'');
   var efSheet=consumoEfectivoRango();
   var nuevas=rows.filter(function(r){return r.nueva;}).length;
   var totalAnti=rows.reduce(function(s,r){return s+(r.anti||0);},0)+efSheet.reduce(function(s,c){return s+c.monto;},0);
@@ -984,7 +994,8 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
     frow('Diferencia vs meta','<b style="color:'+(ticket>=META_TICKET?'var(--vrd)':'var(--roj)')+'">'+
       (ticket>=META_TICKET?'+':'')+clp(ticket-META_TICKET)+'</b>')+
     frow('Clientas nuevas','<b>'+nuevas+'</b>')+
-    frow('Propinas','<b>'+clp(totalProp)+'</b>');
+    frow('Propinas','<b>'+clp(totalProp)+'</b>')+
+    premHtml;
 
   /* Medios de pago */
   var pagoMap={};
@@ -1088,7 +1099,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
     var d=profMap[p];var tk=d.np?Math.round(d.total/d.np):0;
     var tkC=tk>=META_TICKET?'var(--vrd)':tk>=META_TICKET*0.8?'var(--nar)':'var(--roj)';
     return '<tr style="background:'+(i%2?'#fdfbf9':'#fff')+'">'+
-      '<td style="padding:9px 12px;font-weight:700">'+p+'</td>'+
+      '<td style="padding:9px 12px;font-weight:700">'+p+(premPer[p]?' <span style="color:var(--vrd);font-weight:800">⭐ '+premPer[p]+'</span>':'')+'</td>'+
       '<td style="padding:9px 12px;text-align:center;font-weight:800">'+d.n+'</td>'+
       '<td style="padding:9px 12px;text-align:right;font-weight:700">'+clp(d.total)+'</td>'+
       '<td style="padding:9px 12px;text-align:right;font-weight:800;color:'+tkC+'">'+clp(tk)+'</td>'+
@@ -1115,7 +1126,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
     return '<tr style="background:'+(i%2?'#fdfbf9':'#fff')+'">'+
       '<td style="padding:7px 10px;color:var(--gris-s)">'+(i+1)+'</td>'+
       '<td style="padding:7px 10px;font-weight:600">'+r.cli+'</td>'+
-      '<td style="padding:7px 10px">'+r.serv+'</td>'+
+      (isPremiumSvc(r.serv)?'<td style="padding:7px 10px;font-weight:800;color:var(--vrd)">⭐ '+r.serv+'</td>':'<td style="padding:7px 10px">'+r.serv+'</td>')+
       '<td style="padding:7px 10px;color:var(--gris)">'+r.prof+'</td>'+
       '<td style="padding:7px 10px;text-align:right;font-weight:700'+(r.gift?';color:var(--gris-s)':'')+'">'+clp(r.precio)+'</td>'+
       '<td style="padding:7px 10px;text-align:center;font-size:10px;color:'+(r.gift?'var(--rosa);font-weight:700':'var(--gris-s)')+'">'+(r.gift?'🎁 Canje gift card':normPago(r.pago||''))+'</td>'+
@@ -1143,7 +1154,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
       pagoOrd.filter(function(pg){return propPagoMap[pg];}).map(function(pg){
         return '  '+pg+': '+clp(propPagoMap[pg].total);
       }).join('\n'):'')+
-    '\n\nEfectivo a cuadrar (ventas+propinas en efectivo): '+clp(totalEfectivoFisico)+gi.msg+
+    '\n\nEfectivo a cuadrar (ventas+propinas en efectivo): '+clp(totalEfectivoFisico)+gi.msg+premMsg+
     (totalAnti>0?'\n\nAnticipos: '+clp(totalAnti)+'\n'+
       Object.keys(profMap).filter(function(p){return profMap[p].anti>0;}).map(function(p){return '  '+p+': '+clp(profMap[p].anti);}).join('\n')+
       '\n\nCaja neta: '+clp(totalEfectivoFisico-totalAnti):'\n\nSin anticipos')+
@@ -2132,6 +2143,8 @@ var GIFT_HOJA=false;
 var CONSUMO=[];
 var CONS_HOJA=false;
 var CONS_HUERFANOS=[];
+
+function isPremiumSvc(s){var c=canon(s||'');return c.indexOf('cuidadosuperior')>=0||c.indexOf('cuidadosup')>=0;}
 
 /* un canje (servicio pagado con gift card) no es plata del dia: solo cuenta lo pagado con otro medio */
 function valCaja(r){return r.gift?(r.giftAdic||0):r.precio;}
