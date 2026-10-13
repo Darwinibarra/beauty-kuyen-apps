@@ -1571,7 +1571,7 @@ var COM_TEMAS_NEG=[
 var COM_MENC={laura:'Laura',yeimi:'Yeimi',yemi:'Yeimi',gabriela:'Gabriela',gaby:'Gabriela',cata:'Cata',catalina:'Cata',guiovi:'Guiovi',guiovanca:'Guiovi',dahiana:'Dahiana',dahyana:'Dahiana',cony:'Cony',constanza:'Cony'};
 
 function comFel(n){return n===1?'felicitación':'felicitaciones';}
-function comPdf(s){return String(s==null?'':s).replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/→/g,'->').replace(/[^\n\u0020-\u007E\u00A1-\u00FF]/g,'').replace(/ {2,}/g,' ').trim();}
+function comPdf(s){return String(s==null?'':s).replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/→/g,'->').replace(/•/g,'-').replace(/[^\n\u0020-\u007E\u00A1-\u00FF]/g,'').replace(/ {2,}/g,' ').trim();}
 function comEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function comN(x){return String(Math.round(x*10)/10).replace('.',',');}
 function comLimpio(t){
@@ -1735,72 +1735,97 @@ function comNombreCorto(c){
   return p[0]+(p[1]?' '+p[1].charAt(0)+'.':'');
 }
 
-/* interpretacion para el equipo (se usa en pantalla y en el PDF) */
+/* interpretacion para conversar con el equipo (se usa en pantalla y en el PDF): tono cercano, con foco en donde mejorar */
+function comVar(s,opts){
+  /* varia un poco las frases de una semana a otra, de forma estable para la misma semana */
+  var n=0;for(var i=0;i<s.start.length;i++)n+=s.start.charCodeAt(i);
+  return opts[n%opts.length];
+}
+function comSn(n,uno,varios){return n===1?uno:varios;}
+function comMejoras(s){
+  /* puntos concretos para mejorar, sacados de lo que llego esta semana; siempre hay varios, aunque todo sea positivo */
+  var m=[];
+  s.rows.filter(function(r){return r.sent==='Negativo';}).forEach(function(r){
+    m.push('Queja de '+comNombreCorto(r.cli)+(r.manic?' (atendida por '+r.manic+')':'')+': «'+r.texto.replace(/[.\s]+$/,'').slice(0,140)+(r.texto.length>140?'...':'')+'». Hay que llamarla hoy mismo, agradecerle que nos avisó y ofrecerle arreglarlo. El caso se conversa en privado con la manicurista, no en el grupo.');
+  });
+  var neu=s.rows.filter(function(r){return r.sent==='Neutro';});
+  if(neu.length)m.push(neu.length+' '+comSn(neu.length,'clienta respondió','clientas respondieron')+' algo corto, tipo «'+neu[0].texto.slice(0,60)+(neu[0].texto.length>60?'...':'')+'». Una respuesta así casi siempre esconde algo que no las emocionó. Vale la pena escribirles de nuevo y preguntar qué podríamos haber hecho mejor.');
+  if(s.serv>0){
+    var pct=Math.round(s.total/s.serv*100);
+    if(pct<30)m.push('Atendimos '+s.serv+' servicios y solo recibimos '+s.total+' comentarios (alrededor de '+pct+'%). Nos falta escuchar a las clientas que no contestan, que son justo las que podrían tener algo que decirnos.');
+  }
+  var cnt=comTemas(s.rows,COM_TEMAS_POS),dicen={};
+  cnt.forEach(function(x){dicen[x.t]=x.n;});
+  var faltan=['la duración del trabajo','la puntualidad y rapidez','la limpieza y el ambiente','el precio'].filter(function(t){return !dicen[t];});
+  if(faltan.length)m.push('Esta semana nadie habló de '+comLista(faltan.slice(0,3))+'. Que no lo mencionen no quiere decir que esté bien: preguntémoslo directo («¿cómo te va con la duración?», «¿esperaste mucho?»).');
+  var tibios=s.manics.filter(function(o){return o.n<2;});
+  if(tibios.length)m.push('A '+comLista(tibios.map(function(o){return o.nombre;}))+' le'+(tibios.length>1?'s':'')+' llegó un solo comentario. Pidan la opinión a todas sus clientas, así podemos ver de verdad cómo les va y no quedarnos con una sola voz.');
+  if(s.pos>=s.total*0.8&&s.total>0)m.push('Casi todos los comentarios son un «me encantó». Cambiemos un poco la pregunta: además de «¿cómo quedaste?», preguntar «¿qué le cambiarías a tu atención?». Así las clientas se atreven a contar lo que podemos mejorar.');
+  if(s.sin.n>0)m.push(s.sin.n+' '+comSn(s.sin.n,'comentario no tiene','comentarios no tienen')+' manicurista anotada. Anótenla en la hoja COMENTARIOS CLIENTAS para saber a quién corresponde cada opinión.');
+  return m;
+}
 function comInterpretacion(s){
   var out=[];
+  var rango='del '+comFechaCorta(s.start)+' al '+comFechaCorta(s.end);
   if(!s.total){
-    out.push({h:'Sin comentarios esta semana',t:'No llegaron comentarios de clientas entre el '+comFechaLarga(s.start)+' y el '+comFechaLarga(s.end)+'. Meta de la próxima semana: pedir su opinión a cada clienta al terminar el servicio y pegar sus respuestas en la hoja COMENTARIOS CLIENTAS.'});
+    out.push({h:'Esta semana no llegaron comentarios',t:'Entre el '+comFechaLarga(s.start)+' y el '+comFechaLarga(s.end)+' no tenemos opiniones de clientas. Sin comentarios no sabemos cómo lo estamos haciendo, así que la tarea de esta semana es pedirle su opinión a cada clienta antes de que se vaya, y pegar sus respuestas en la hoja COMENTARIOS CLIENTAS.'});
     return out;
   }
-  var res='Entre el '+comFechaLarga(s.start)+' y el '+comFechaLarga(s.end)+' las clientas enviaron '+s.total+' comentario'+(s.total>1?'s':'')+': '+s.pos+' '+comFel(s.pos)+' ('+Math.round(s.pctPos*100)+'%), '+s.neu+' neutro'+(s.neu!==1?'s':'')+' y '+s.neg+' queja'+(s.neg!==1?'s':'')+'. La calificación del equipo es de '+comN(s.stars)+' de 5 estrellas.';
-  if(s.pctPos>=0.85&&s.neg===0)res+=' Es una semana excelente: las clientas están muy contentas con el trabajo del equipo.';
-  else if(s.pctPos>=0.6&&s.neg===0)res+=' Buena semana: la mayoría de las clientas quedó contenta y no hubo quejas.';
-  else if(s.neg>0)res+=' Hubo '+(s.neg>1?'quejas':'una queja')+' que conviene atender de inmediato, aunque el balance general se mantiene '+(s.pctPos>=0.5?'positivo':'por mejorar')+'.';
-  else res+=' Hay mucho comentario neutro: es una oportunidad para sorprender a las clientas y que se animen a felicitar.';
-  out.push({h:'Resumen de la semana',t:res});
-  if(s.serv){
-    var por=Math.round(s.total/s.serv*100);
-    out.push({h:'Qué tan representativo es',t:'En la semana se registraron '+s.serv+' servicios y recibimos '+s.total+' comentario'+(s.total>1?'s':'')+' (aprox. '+por+'% de los servicios). '+(por<20?'Son pocos comentarios, así que las estrellas son una referencia y no una nota definitiva: mientras más clientas opinen, más justa es la evaluación.':'Es una muy buena participación de las clientas.')});
-  }
+  var res=comVar(s,['Esta semana las clientas nos escribieron','Les cuento qué nos dijeron las clientas: llegaron','Revisamos lo que contestaron las clientas y llegaron'])+' '+s.total+' '+comSn(s.total,'comentario','comentarios')+' ('+rango+'): '+s.pos+' de cariño, '+s.neu+' '+comSn(s.neu,'más cortito','más cortitos')+' y '+s.neg+' '+comSn(s.neg,'queja','quejas')+'. En estrellas, el equipo se lleva '+comN(s.stars)+' de 5.';
+  if(s.neg>0)res+=' Hubo '+comSn(s.neg,'una queja que hay que atender','quejas que hay que atender')+' hoy mismo; más abajo va cómo.';
+  else if(s.pctPos>=0.85)res+=' Muy buena semana, las clientas se fueron contentas.';
+  else if(s.pctPos>=0.6)res+=' Buena semana, aunque se puede afinar.';
+  else res+=' Fue una semana más tibia: hay que mirar con calma qué pasó.';
+  out.push({h:'Cómo nos fue',t:res});
   if(s.temasPos.length){
     var tp=s.temasPos.slice(0,3).map(function(x){return x.t;});
-    out.push({h:'Lo que más valoran las clientas',t:'Las felicitaciones mencionan sobre todo '+comLista(tp)+'. Esto es lo que hay que mantener: sigan haciéndolo igual y recuerden que cada clienta contenta recomienda al salón.'});
+    out.push({h:'Lo que más les gustó',t:'Lo que más se repite en las felicitaciones es '+comLista(tp)+'. Eso lo estamos haciendo bien, así que a mantenerlo.'});
   }
-  /* por manicurista */
-  var lineas=[];
-  s.manics.forEach(function(o){
-    var l=o.nombre+': '+o.pos+' '+comFel(o.pos)+(o.neu?', '+o.neu+' neutro'+(o.neu>1?'s':''):'')+(o.neg?', '+o.neg+' queja'+(o.neg>1?'s':''):'')+'. Calificación: '+comN(o.stars)+' estrellas';
-    if(o.n<3)l+=' (pocos comentarios, nota referencial)';
-    lineas.push(l);
+  var lineas=s.manics.map(function(o){
+    return o.nombre+': '+o.pos+' '+comFel(o.pos)+(o.neu?', '+o.neu+' '+comSn(o.neu,'neutro','neutros'):'')+(o.neg?', '+o.neg+' '+comSn(o.neg,'queja','quejas'):'')+'. Estrellas: '+comN(o.stars)+(o.n<3?' (llegaron pocos comentarios, todavía no dice mucho)':'')+'.';
   });
-  if(lineas.length)out.push({h:'Cómo le fue a cada manicurista',t:lineas.join('\n')});
-  if(s.felicitaEquipo)out.push({h:'Felicitación al equipo',t:'Todas las manicuristas que recibieron comentarios obtuvieron solo felicitaciones y ninguna queja. ¡Felicitaciones a todo el equipo! Ese trabajo en conjunto es lo que hace que las clientas vuelvan.'});
-  else if(s.lideres.length===1)out.push({h:'Más felicitada de la semana',t:'¡Felicitaciones a '+s.lideres[0].nombre+'! Fue la más felicitada por las clientas ('+s.lideres[0].pos+' '+comFel(s.lideres[0].pos)+'). Su forma de atender es un ejemplo para el resto del equipo.'});
-  else if(s.lideres.length>1)out.push({h:'Más felicitadas de la semana',t:'¡Felicitaciones a '+comLista(s.lideres.map(function(o){return o.nombre;}))+'! Empataron como las más felicitadas ('+s.lideres[0].pos+' '+comFel(s.lideres[0].pos)+' cada una).'});
-  /* mejoras */
-  var mej=[];
-  if(s.neg>0){
-    var tn=s.temasNeg.slice(0,2).map(function(x){return x.t;});
-    mej.push('Contactar esta semana a la clienta de cada queja, agradecer que avisó y ofrecer corregirlo'+(tn.length?' (se habla de '+comLista(tn)+')':'')+'. Conversar el caso en privado con la manicurista, sin exponerla frente al grupo.');
-  }
-  if(s.neu>0)mej.push('Los comentarios neutros dicen "todo bien" pero no emocionan: preguntar a esas clientas qué podría ser mejor y ofrecerles una pequeña sorpresa (un diseño extra, un detalle) en su próxima visita.');
-  if(s.sin.n>0)mej.push('Hay '+s.sin.n+' comentario'+(s.sin.n>1?'s':'')+' sin manicurista asignada. Completa la columna "Manicurista" en la hoja COMENTARIOS CLIENTAS para que cuenten en las estrellas de cada una.');
-  mej.push('Meta de la próxima semana: pedir su opinión a todas las clientas al terminar el servicio y compartir las felicitaciones con el equipo cada semana.');
-  out.push({h:'Qué mejorar y próximos pasos',t:mej.map(function(x){return '• '+x;}).join('\n')});
+  if(lineas.length)out.push({h:'Cómo le fue a cada una',t:lineas.join('\n')});
+  if(s.felicitaEquipo)out.push({h:'Felicitaciones',t:'Felicitaciones a todo el equipo: esta semana todas las opiniones fueron de cariño y a nadie le llegó una queja. Gracias por el trato que le ponen a cada clienta.'});
+  else if(s.lideres.length===1)out.push({h:'Felicitaciones',t:'Felicitaciones, '+s.lideres[0].nombre+': fue la más nombrada por las clientas ('+s.lideres[0].pos+' '+comFel(s.lideres[0].pos)+'). Gracias por el cariño con que atiende.'});
+  else if(s.lideres.length>1)out.push({h:'Felicitaciones',t:'Felicitaciones a '+comLista(s.lideres.map(function(o){return o.nombre;}))+': empataron como las más nombradas por las clientas ('+s.lideres[0].pos+' '+comFel(s.lideres[0].pos)+' cada una). Gracias por el cariño con que atienden.'});
+  var mej=comMejoras(s);
+  if(mej.length)out.push({h:'Dónde podemos mejorar',t:mej.map(function(x){return '• '+x;}).join('\n')});
+  var prox=['Pedirle su opinión a todas las clientas antes de que se vayan, no solo a algunas.','Incluir siempre la pregunta «¿qué le cambiarías?».'];
+  if(s.neg>0)prox.unshift('Llamar a la clienta de la queja y contarle a Cecilia cómo resultó.');
+  out.push({h:'Para la próxima semana',t:prox.map(function(x){return '• '+x;}).join('\n')});
   return out;
 }
 
-/* mensaje corto para el grupo de WhatsApp (sin nombres de clientas ni de quien tuvo quejas) */
+/* mensaje para el grupo de WhatsApp: cercano, corto y con foco en mejorar; sin nombres de clientas ni de quien tuvo una queja */
 function comMensajeWA(s){
   var L=[];
-  L.push('🌸 *Beauty Kuyen · Comentarios de la semana*');
-  L.push('📅 '+comFechaCorta(s.start)+' al '+comFechaCorta(s.end));
+  var rango=comFechaCorta(s.start)+' al '+comFechaCorta(s.end);
   if(!s.total){
-    L.push('Esta semana no llegaron comentarios de clientas.');
-    L.push('🎯 Meta: pedir su opinión a cada clienta al terminar el servicio.');
+    L.push('Chicas, esta semana ('+rango+') no nos llegó ningún comentario de clientas 😕');
+    L.push('Sin eso no sabemos cómo lo estamos haciendo. Pidámosle su opinión a cada clienta antes de que se vaya, ¿les parece?');
     return L.join('\n');
   }
-  L.push('💌 Recibimos '+s.total+' comentario'+(s.total>1?'s':'')+': '+s.pos+' '+comFel(s.pos)+' 💖 ('+Math.round(s.pctPos*100)+'%)');
-  L.push('⭐ Calificación del equipo: '+comN(s.stars)+' de 5');
-  if(s.manics.length){
-    L.push('✨ '+s.manics.map(function(o){return o.nombre+' '+comN(o.stars)+'⭐';}).join(' · '));
-  }
-  if(s.felicitaEquipo)L.push('👏 ¡Felicitaciones a todo el equipo! Solo recibimos cariño de las clientas, seguimos así.');
-  else if(s.lideres.length===1)L.push('🏆 Más felicitada: *'+s.lideres[0].nombre+'* ('+s.lideres[0].pos+') ¡Gracias por tu cariño y excelente trabajo!');
-  else if(s.lideres.length>1)L.push('🏆 Más felicitadas: *'+comLista(s.lideres.map(function(o){return o.nombre;}))+'* ¡Excelente trabajo!');
-  if(s.temasPos.length)L.push('💡 Lo que más valoran: '+s.temasPos[0].t+(s.temasPos[1]?' y '+s.temasPos[1].t:'')+'.');
-  if(s.neg>0)L.push('🔧 Hubo '+s.neg+' comentario'+(s.neg>1?'s':'')+' para mejorar; lo conversamos en privado.');
-  L.push('🎯 Meta: pedir su opinión a cada clienta al terminar el servicio.');
+  L.push(comVar(s,['Chicas, les cuento cómo nos fue esta semana ('+rango+') con lo que nos escribieron las clientas 💕','Hola chicas 💕 resumen de los comentarios de la semana ('+rango+')','Chicas, aquí va lo que nos dijeron las clientas esta semana ('+rango+') 💕']));
+  L.push('');
+  L.push('Nos llegaron '+s.total+' '+comSn(s.total,'comentario','comentarios')+': '+s.pos+' '+comSn(s.pos,'de cariño','de cariño')+(s.neu?', '+s.neu+' '+comSn(s.neu,'cortito','cortitos'):'')+(s.neg?' y '+s.neg+' para mejorar':'')+'.');
+  if(s.manics.length)L.push('Estrellas de la semana: '+s.manics.map(function(o){return o.nombre+' '+comN(o.stars)+'⭐';}).join(' · '));
+  if(s.felicitaEquipo)L.push('Felicitaciones a todas 👏 esta semana solo hubo cariño de las clientas.');
+  else if(s.lideres.length===1)L.push('Felicitaciones a '+s.lideres[0].nombre+', la más nombrada por las clientas 👏');
+  else if(s.lideres.length>1)L.push('Felicitaciones a '+comLista(s.lideres.map(function(o){return o.nombre;}))+', las más nombradas por las clientas 👏');
+  if(s.temasPos.length)L.push('Lo que más les gusta: '+s.temasPos[0].t+(s.temasPos[1]?' y '+s.temasPos[1].t:'')+'.');
+  L.push('');
+  L.push('Ahora lo que tenemos que mejorar 👇');
+  var bul=[];
+  if(s.neg>0)bul.push('Hubo '+comSn(s.neg,'un comentario','comentarios')+' con algo que mejorar. Cecilia lo ve en privado con la persona que corresponde.');
+  if(s.neu>0)bul.push('Algunas respuestas fueron muy cortas. Si la clienta contesta «ok», preguntemos qué no le gustó tanto.');
+  if(s.serv>0&&Math.round(s.total/s.serv*100)<30)bul.push('Hicimos '+s.serv+' servicios y solo '+s.total+' clientas nos contestaron. Pidamos la opinión a todas antes de que se vayan.');
+  bul.push('No solo preguntemos «¿cómo quedaste?»; agreguemos «¿qué le cambiarías?».');
+  var cnt={};comTemas(s.rows,COM_TEMAS_POS).forEach(function(x){cnt[x.t]=x.n;});
+  var falta=['la duración del trabajo','la puntualidad y rapidez','la limpieza y el ambiente'].filter(function(t){return !cnt[t];});
+  if(falta.length)bul.push('Nadie habló de '+comLista(falta.slice(0,2))+'. Preguntémoslo directo.');
+  bul.slice(0,4).forEach(function(b){L.push('• '+b);});
+  L.push('');
+  L.push(comVar(s,['Vamos con todo esta semana 💪','Gracias por el cariño que le ponen, sigamos así 💗','Seguimos mejorando juntas 💪']));
   return L.join('\n');
 }
 
@@ -1895,7 +1920,7 @@ function renderComentarios(){
   }
   /* interpretacion */
   var interp=comInterpretacion(s);
-  h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>🧭 Interpretación para el equipo</h3><span style="font-size:10.5px;color:var(--gris-s)">Va dentro del PDF</span></div><div style="padding:14px 16px">';
+  h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>🧭 Para conversar con el equipo</h3><span style="font-size:10.5px;color:var(--gris-s)">Va dentro del PDF</span></div><div style="padding:14px 16px">';
   interp.forEach(function(b){
     h+='<div style="margin-bottom:11px"><div style="font-size:11px;font-weight:800;color:var(--rosa);text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px">'+comEsc(b.h)+'</div><div style="font-size:12.5px;line-height:1.65;white-space:pre-wrap;color:var(--tinta)">'+comEsc(b.t)+'</div></div>';
   });
@@ -1911,7 +1936,7 @@ function renderComentarios(){
   /* WhatsApp */
   var wa=comMensajeWA(s);
   window._comWA=wa;
-  h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>💌 Mensaje corto para el grupo de WhatsApp</h3><span style="font-size:10px;color:var(--gris-s)">Sin nombres de clientas</span></div><div style="padding:14px 16px"><div style="background:var(--cr2);border-radius:10px;padding:13px 14px;font-size:12px;line-height:1.75;white-space:pre-wrap;border:1px solid var(--lin);color:var(--tinta)">'+comEsc(wa)+'</div><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-sm btn-cargar" onclick="comCopiarWA()">📋 Copiar para WhatsApp</button><button class="btn-sm" style="background:#25d366;color:#fff" onclick="comAbrirWA()">💬 Abrir WhatsApp</button><span id="comCopyOk" style="font-size:11px;color:var(--vrd);font-weight:700;display:none;align-self:center">✓ Copiado!</span></div></div></div>';
+  h+='<div class="panel" style="margin-bottom:14px"><div class="panel-h"><h3>💌 Mensaje para el grupo de WhatsApp</h3><span style="font-size:10px;color:var(--gris-s)">Para copiar y pegar · no va en el PDF</span></div><div style="padding:14px 16px"><div style="background:var(--cr2);border-radius:10px;padding:13px 14px;font-size:12px;line-height:1.75;white-space:pre-wrap;border:1px solid var(--lin);color:var(--tinta)">'+comEsc(wa)+'</div><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-sm btn-cargar" onclick="comCopiarWA()">📋 Copiar para WhatsApp</button><button class="btn-sm" style="background:#25d366;color:#fff" onclick="comAbrirWA()">💬 Abrir WhatsApp</button><span id="comCopyOk" style="font-size:11px;color:var(--vrd);font-weight:700;display:none;align-self:center">✓ Copiado!</span></div></div></div>';
   /* descarga */
   h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px"><button class="btn-sm btn-cargar" style="padding:11px 18px;font-size:12.5px" onclick="comDescargarPDF()">📄 Descargar informe PDF de la semana</button><button class="btn-sm btn-refresh" style="padding:11px 18px;font-size:12.5px" onclick="comCompartirPDF()">📤 Compartir PDF</button></div>';
   body.innerHTML=h;
@@ -2030,7 +2055,7 @@ function comBuildPDF(s){
   /* interpretacion */
   function need(h){if(y+h>H-46){doc.addPage();y=40;}}
   need(40);
-  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]);doc.text('Interpretación de los resultados para el equipo',M,y);y+=6;
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]);doc.text('Para conversar con el equipo',M,y);y+=6;
   comInterpretacion(s).forEach(function(b){
     b={h:comPdf(b.h),t:comPdf(b.t)};
     doc.setFont('helvetica','normal');doc.setFontSize(9.6);
@@ -2069,17 +2094,6 @@ function comBuildPDF(s){
       doc.text('* Manicurista tomada del nombre que aparece en el comentario (la columna Manicurista del Excel estaba vacía).',M,y+6);y+=14;
     }
   }
-
-  /* mensaje whatsapp */
-  var wa=comMensajeWA(s).replace(/[^ -~ -ÿ\n]/g,'').replace(/\*/g,'');
-  var wl=[];wa.split('\n').forEach(function(p){p=p.replace(/^\s+/,'');doc.splitTextToSize(p,W-2*M-24).forEach(function(l){wl.push(l);});});
-  var bh=26+wl.length*12.5;
-  need(bh+30);
-  y+=14;
-  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(ROSA[0],ROSA[1],ROSA[2]);doc.text('Mensaje corto para el grupo de WhatsApp',M,y);
-  doc.setFillColor(236,250,242);doc.setDrawColor(150,210,175);doc.roundedRect(M,y+8,W-2*M,bh,7,7,'FD');
-  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(TINTA[0],TINTA[1],TINTA[2]);
-  var yy=y+24;wl.forEach(function(l){doc.text(l,M+12,yy);yy+=12.5;});
 
   /* pie */
   var n=doc.getNumberOfPages();
