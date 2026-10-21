@@ -537,6 +537,7 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
         <button class="wa-btn wa-copy" id="waCopyBtn" onclick="copyWA()">📋 Copiar</button>
         <button class="wa-btn wa-open" onclick="openWA()">💬 WhatsApp</button>
       </div>
+      <button class="wa-btn" id="waSentBtn" style="display:none;width:100%;margin-top:8px;background:var(--vrd-s);color:var(--vrd);border:1px solid #a8dfc0" onclick="pvEnviadoModal()">✓ Ya lo envié (sale de la lista)</button>
     </div>
   </div>
 </div>
@@ -882,67 +883,128 @@ function copyFichaWA(){
 /* ═══════════════════════════════════════════
    POST-VENTA
 ═══════════════════════════════════════════ */
+/* ── Post-venta: control de mensajes enviados ──
+   Cada mensaje que se envia desaparece de la lista de pendientes y queda en "Enviados" (por si hay que deshacer).
+   Se guarda en este navegador. La clave incluye la fecha de la ultima visita: si la clienta vuelve, su ciclo empieza de nuevo. */
+var PV_KEY='bk_cecilia_pv_enviados';
+function pvLoad(){
+  try{
+    var o=JSON.parse(localStorage.getItem(PV_KEY)||'{}'),lim=Date.now()-150*86400000;
+    Object.keys(o).forEach(function(k){if(o[k]<lim)delete o[k];});
+    return o;
+  }catch(e){return {};}
+}
+function pvSave(o){try{localStorage.setItem(PV_KEY,JSON.stringify(o));}catch(e){}}
+function pvKey(cli,tipo,ultima){return canonSearch(cli)+'|'+tipo+'|'+ultima;}
+function pvMarcar(ctx,enviado){
+  var o=pvLoad(),k=pvKey(ctx.cli,ctx.tipo,ctx.ultima);
+  if(enviado)o[k]=Date.now();else delete o[k];
+  pvSave(o);
+  renderPostVenta();
+}
+function pvEnviadoModal(){
+  if(window._pvCtx){pvMarcar(window._pvCtx,true);window._pvCtx=null;closeWA();}
+}
+function pvMensaje(tipo,nombre,serv){
+  return tipo===1?
+    'Hola '+nombre+', soy Cecilia de Beauty Kuyen!\n\nHace unos dias te atendimos con '+serv+' y queriamos saber como quedaste con el resultado.\n\nTu opinion es muy importante para nosotras. Si hubo algo que no te gusto, cuentanos y lo resolvemos.\n\nEsperamos que estes feliz con tus unas!\n\nBeauty Kuyen':
+    tipo===2?
+    'Hola '+nombre+'! Soy Cecilia de Beauty Kuyen.\n\nYa han pasado unas semanas desde tu visita con '+serv+' y es probable que ya sea tiempo de un retoque.\n\nEsta semana tenemos turnos disponibles. Te agendamos?\n\nBeauty Kuyen':
+    'Hola '+nombre+', te escribimos desde Beauty Kuyen!\n\nFue un gusto tenerte con nosotras para tu '+serv+'. Notamos que ha pasado un tiempo y te echamos de menos!\n\nPara tu proxima visita tenemos algo especial esperandote. Escribenos y coordinamos tu turno esta semana.\n\nBeauty Kuyen';
+}
+/* nombres que no son una clienta real (no se les puede escribir) */
+function pvSinNombre(cli){var c=canonSearch(cli);return /sin nombre|walk ?in|clienta sin|sin identific|^cliente$|^clienta$/.test(c);}
+
 function renderPostVenta(){
-  /* Se sigue el ciclo de post-venta a partir de la ULTIMA visita (no la primera),
-     y se incluye a TODAS las clientas -nuevas y recurrentes-. Antes solo se
-     consideraba a clientas nuevas usando su primera visita historica, por eso
-     la lista no se actualizaba y faltaban clientas recurrentes del mismo dia. */
-  var m1=[],m2=[],m3=[];
+  /* Se sigue el ciclo de post-venta a partir de la ULTIMA visita y se incluye a TODAS las clientas, nuevas y recurrentes.
+     Momento 1: 3 a 6 dias (validar experiencia). Si pasan 7 a 10 dias sin enviarlo, queda en "Se paso el plazo". */
+  var sent=pvLoad();
+  var pend={1:[],2:[],3:[],v:[]},env=[];
   Object.values(CLI_DATA).forEach(function(c){
-    var d=diffD(c.ultima);
-    if(d>=3&&d<=6)m1.push(Object.assign({dias:d},c));
-    else if(d>=17&&d<=24)m2.push(Object.assign({dias:d},c));
-    else if(d>=33&&d<=62)m3.push(Object.assign({dias:d},c));
+    if(pvSinNombre(c.cli))return;
+    var d=diffD(c.ultima),tipo=0,venc=false;
+    if(d>=3&&d<=6)tipo=1;
+    else if(d>=17&&d<=24)tipo=2;
+    else if(d>=33&&d<=62)tipo=3;
+    else if(d>=7&&d<=10){tipo=1;venc=true;}
+    if(!tipo)return;
+    var item=Object.assign({dias:d,tipo:tipo},c);
+    var ts=sent[pvKey(c.cli,tipo,c.ultima)];
+    if(ts){item.ts=ts;env.push(item);}
+    else if(venc)pend.v.push(item);
+    else pend[tipo].push(item);
   });
-  var total=m1.length+m2.length+m3.length;
-  txt('pvTotal',total+' a contactar');
+  var total=pend[1].length+pend[2].length+pend[3].length+pend.v.length;
+  txt('pvTotal',total+' por enviar'+(env.length?' · '+env.length+' enviados':''));
   txt('tcnt2',total);
 
-  if(!total){
-    document.getElementById('pvListas').innerHTML='<div class="empty"><div class="eico">✅</div><p>Sin clientas para contactar hoy.</p></div>';
-    return;
-  }
-  function pvSection(lista,tipo,titulo,subtitulo,cls){
+  function esc(x){return String(x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+  window._pvLists={};
+  function pvSection(lista,tipo,titulo,subtitulo,cls,vencida){
     if(!lista.length)return '';
-    var col=tipo===1?'var(--azu)':tipo===2?'var(--nar)':'var(--roj)';
-    var ico=tipo===1?'🎯':tipo===2?'📲':'🚨';
-    return '<div style="padding:12px 14px 4px"><div style="font-size:11px;font-weight:800;color:var(--neg);margin-bottom:8px">'+titulo+' ('+lista.length+')</div>'+
+    var sec=vencida?'v':String(tipo);window._pvLists[sec]=lista;
+    var col=vencida?'var(--roj)':tipo===1?'var(--azu)':tipo===2?'var(--nar)':'var(--roj)';
+    var ico=vencida?'⏰':tipo===1?'🎯':tipo===2?'📲':'🚨';
+    return '<div style="padding:12px 14px 4px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="flex:1;font-size:11px;font-weight:800;color:var(--neg)">'+titulo+' ('+lista.length+')</div><button class="btn-wa pv-all" data-sec="'+sec+'" style="font-size:10px">✓ Marcar todas enviadas</button></div>'+
       lista.map(function(c){
-        return '<div class="pv-item '+cls+'" data-cli="'+c.cli.replace(/"/g,'&quot;')+'" data-tipo="'+tipo+'">'+
+        var attrs='data-cli="'+esc(c.cli)+'" data-serv="'+esc(c.ultimoServ)+'" data-tipo="'+tipo+'" data-ultima="'+esc(c.ultima)+'"';
+        return '<div class="pv-item '+cls+'" style="margin-bottom:8px">'+
           '<div class="pv-ico">'+ico+'</div>'+
           '<div class="pv-info">'+
-            '<div class="pv-name">'+c.cli.split(' ').slice(0,2).join(' ')+'</div>'+
-            '<div class="pv-det">'+c.ultimoServ+' · '+c.prof+(c.nueva?' · <span style="color:var(--azu);font-weight:700">nueva</span>':'')+'</div>'+
+            '<div class="pv-name">'+esc(c.cli.split(' ').slice(0,2).join(' '))+'</div>'+
+            '<div class="pv-det">'+esc(c.ultimoServ)+' · '+esc(c.prof)+(c.nueva?' · <span style="color:var(--azu);font-weight:700">nueva</span>':'')+'</div>'+
             '<div class="pv-dias" style="color:'+col+'">'+c.dias+' dias desde su ultima visita</div>'+
-            '<button class="btn-wa pv-btn" '+
-              'data-cli="'+c.cli.replace(/"/g,'&quot;')+'" '+
-              'data-serv="'+c.ultimoServ.replace(/"/g,'&quot;')+'" '+
-              'data-tipo="'+tipo+'">💬 Ver mensaje</button>'+
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'+
+              '<button class="btn-wa pv-btn" '+attrs+'>💬 Ver mensaje</button>'+
+              '<button class="btn-wa pv-ok" '+attrs+' style="background:var(--vrd-s);color:var(--vrd)">✓ Ya lo envie</button>'+
+            '</div>'+
           '</div>'+
         '</div>';
       }).join('')+'</div>';
   }
 
-  document.getElementById('pvListas').innerHTML=
-    pvSection(m1,1,'Momento 1 — Validar experiencia (3-6 dias)','Preguntar como estuvo','m1')+
-    pvSection(m2,2,'Momento 2 — Invitar a volver (17-24 dias)','El retoque natural','m2')+
-    pvSection(m3,3,'Momento 3 — Recuperar (33-62 dias)','Antes de perderla','m3');
-
-  /* Handler delegado para botones post-venta */
-  document.getElementById('pvListas').addEventListener('click',function(e){
-    var btn=e.target.closest('.pv-btn');if(!btn)return;
-    var cli=btn.dataset.cli;
-    var serv=btn.dataset.serv;
-    var tipo=parseInt(btn.dataset.tipo);
-    var nombre=cli.split(' ')[0];
-    var msg=tipo===1?
-      'Hola '+nombre+', soy Cecilia de Beauty Kuyen!\n\nHace unos dias te atendimos con '+serv+' y queriamos saber como quedaste con el resultado.\n\nTu opinion es muy importante para nosotras. Si hubo algo que no te gusto, cuentanos y lo resolvemos.\n\nEsperamos que estes feliz con tus unas!\n\nBeauty Kuyen':
-      tipo===2?
-      'Hola '+nombre+'! Soy Cecilia de Beauty Kuyen.\n\nYa han pasado unas semanas desde tu visita con '+serv+' y es probable que ya sea tiempo de un retoque.\n\nEsta semana tenemos turnos disponibles. Te agendamos?\n\nBeauty Kuyen':
-      'Hola '+nombre+', te escribimos desde Beauty Kuyen!\n\nFue un gusto tenerte con nosotras para tu '+serv+'. Notamos que ha pasado un tiempo y te echamos de menos!\n\nPara tu proxima visita tenemos algo especial esperandote. Escribenos y coordinamos tu turno esta semana.\n\nBeauty Kuyen';
-    openWAModal(cli,serv,msg);
-  });
+  var html='';
+  if(!total){
+    html='<div class="empty"><div class="eico">✅</div><p>'+(env.length?'Todo enviado. No queda nada pendiente.':'Sin clientas para contactar hoy.')+'</p></div>';
+  }else{
+    html=pvSection(pend.v,1,'Se paso el plazo sin enviar (7-10 dias)','Validar experiencia, atrasado','m3',true)+
+      pvSection(pend[1],1,'Momento 1 — Validar experiencia (3-6 dias)','Preguntar como estuvo','m1')+
+      pvSection(pend[2],2,'Momento 2 — Invitar a volver (17-24 dias)','El retoque natural','m2')+
+      pvSection(pend[3],3,'Momento 3 — Recuperar (33-62 dias)','Antes de perderla','m3');
+  }
+  if(env.length){
+    env.sort(function(a,b){return b.ts-a.ts;});
+    var nom={1:'Momento 1',2:'Momento 2',3:'Momento 3'};
+    html+='<details style="padding:8px 14px 14px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:var(--vrd)">✅ Enviados ('+env.length+')</summary><div style="margin-top:8px">'+
+      env.map(function(c){
+        var f=new Date(c.ts);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--lin);font-size:11.5px">'+
+          '<div style="flex:1"><b>'+esc(c.cli.split(' ').slice(0,2).join(' '))+'</b> <span style="color:var(--gris-s)">· '+nom[c.tipo]+' · enviado '+pad(f.getDate())+'/'+pad(f.getMonth()+1)+' '+pad(f.getHours())+':'+pad(f.getMinutes())+'</span></div>'+
+          '<button class="btn-wa pv-undo" data-cli="'+esc(c.cli)+'" data-tipo="'+c.tipo+'" data-ultima="'+esc(c.ultima)+'">↩ Deshacer</button></div>';
+      }).join('')+'</div></details>';
+  }
+  document.getElementById('pvListas').innerHTML=html;
 }
+
+/* un solo manejador de clics (antes se registraba uno nuevo en cada recarga de datos) */
+document.getElementById('pvListas').addEventListener('click',function(e){
+  var all=e.target.closest('.pv-all');
+  if(all){
+    var ls=(window._pvLists||{})[all.dataset.sec]||[];
+    if(!ls.length)return;
+    if(!confirm('¿Marcar las '+ls.length+' clientas de esta sección como ya enviadas? Quedan en "Enviados" y se pueden deshacer una por una.'))return;
+    var o=pvLoad(),now=Date.now();
+    ls.forEach(function(c){o[pvKey(c.cli,c.tipo,c.ultima)]=now;});
+    pvSave(o);renderPostVenta();return;
+  }
+  var btn=e.target.closest('.pv-btn,.pv-ok,.pv-undo');if(!btn)return;
+  var ctx={cli:btn.dataset.cli,tipo:parseInt(btn.dataset.tipo),ultima:btn.dataset.ultima};
+  if(btn.classList.contains('pv-ok')){pvMarcar(ctx,true);return;}
+  if(btn.classList.contains('pv-undo')){pvMarcar(ctx,false);return;}
+  openWAModal(ctx.cli,btn.dataset.serv,pvMensaje(ctx.tipo,ctx.cli.split(' ')[0],btn.dataset.serv));
+  window._pvCtx=ctx;
+  document.getElementById('waSentBtn').style.display='';
+});
 
 /* ═══════════════════════════════════════════
    RESUMEN DIA
@@ -1291,6 +1353,8 @@ function openMsgDarwinWA(){
 ═══════════════════════════════════════════ */
 function openWAModal(nombre,serv,msg){
   var msgReal=typeof msg==='string'?msg:String(msg);
+  window._pvCtx=null;
+  var sb=document.getElementById('waSentBtn');if(sb)sb.style.display='none';
   currentWAMsg=msgReal;
   txt('waNombre',nombre.split(' ')[0]);
   document.getElementById('waMsg').textContent=msgReal;
@@ -1306,7 +1370,11 @@ function copyWA(){
   var b=document.getElementById('waCopyBtn');b.textContent='✓ Copiado!';b.className='wa-btn wa-copy ok';
   setTimeout(function(){b.textContent='Copiar';b.className='wa-btn wa-copy';},2000);
 }
-function openWA(){window.open('https://api.whatsapp.com/send?text='+encodeURIComponent(currentWAMsg),'_blank');}
+function openWA(){
+  window.open('https://api.whatsapp.com/send?text='+encodeURIComponent(currentWAMsg),'_blank');
+  /* al abrir WhatsApp para enviar, el mensaje se da por enviado y sale de la lista (se puede deshacer en "Enviados") */
+  if(window._pvCtx){pvMarcar(window._pvCtx,true);window._pvCtx=null;closeWA();}
+}
 document.getElementById('waModal').addEventListener('click',function(e){if(e.target===this)closeWA();});
 
 /* ═══════════════════════════════════════════
