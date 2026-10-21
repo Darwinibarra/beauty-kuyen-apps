@@ -429,6 +429,12 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
     </div>
   </div>
 
+  <!-- CLIMA Y VENTA ESPERADA -->
+  <div class="panel" style="margin-bottom:12px">
+    <div class="panel-h"><h3>🌦️ Clima y venta esperada</h3><span class="badge badge-rosa" id="resClimaBadge">—</span></div>
+    <div id="resClima" style="padding:12px 14px"><div class="empty"><p>Carga el Excel.</p></div></div>
+  </div>
+
   <!-- GIFT CARDS (siempre separado de la venta de servicios) -->
   <div class="panel" style="margin-bottom:12px">
     <div class="panel-h"><h3>🎁 Gift cards</h3><span class="badge badge-rosa" id="resGiftTotal">—</span></div>
@@ -1038,12 +1044,14 @@ function renderResumen(ultimoDia,diaData){
 }
 
 function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
+  window._resRedraw=function(){renderResumenCore(rows,fechaLabel,esSemana,saludoMsg);};
   var ventas=rows.reduce(function(s,r){return s+valCaja(r);},0);
   var nPag=rows.filter(function(r){return !r.gift;}).length;
   var ticket=nPag?Math.round(ventas/nPag):0;
   var canjes=rows.filter(function(r){return r.gift;});
   var canjeTotal=canjes.reduce(function(s,r){return s+(r.precio-(r.giftAdic||0));},0);
   var gi=giftResumen(canjes,canjeTotal);
+  var clm=climaResumen(esSemana);
   /* Esmaltado permanente Cuidado Superior: servicio premium, destacado en negrita y verde */
   var premRows=rows.filter(function(r){return isPremiumSvc(r.serv);});
   var premTot={},premPer={};
@@ -1215,6 +1223,8 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   }).join('');
 
   /* Gift cards */
+  document.getElementById('resClima').innerHTML=clm.html;
+  txt('resClimaBadge',clm.badge);
   document.getElementById('resGift').innerHTML=gi.html;
   txt('resGiftTotal',gi.n?clp(gi.total)+' vendidas':(canjes.length+' canje(s)'));
 
@@ -1231,7 +1241,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
     pagoOrd.filter(function(pg){return propPagoMap[pg];}).forEach(function(pg){L.push('- '+pgL(pg)+': '+clp(propPagoMap[pg].total));});
   }
   L.push('');
-  L.push('Para cuadrar la caja, en efectivo tiene que haber '+clp(totalEfectivoFisico)+' (las ventas más las propinas en efectivo).'+gi.msg+premMsg);
+  L.push('Para cuadrar la caja, en efectivo tiene que haber '+clp(totalEfectivoFisico)+' (las ventas más las propinas en efectivo).'+gi.msg+premMsg+clm.msg);
   L.push('');
   if(totalAnti>0){
     L.push('Se entregaron '+clp(totalAnti)+' en anticipos:');
@@ -1477,6 +1487,7 @@ function procesarRegistroBuffer(arrayBuffer){
       try{parseComentarios(wb);}catch(exC){console.warn('Comentarios no leidos:',exC);COMENTARIOS=[];COM_HOJA=false;}
       try{parseGiftCards(wb);}catch(exG){console.warn('Gift cards no leidas:',exG);GIFT_VENTAS=[];GIFT_HOJA=false;}
       try{parseConsumo(wb);}catch(exK){console.warn('Consumo interno no leido:',exK);CONSUMO=[];CONS_HOJA=false;CONS_HUERFANOS=[];}
+      try{parseClimaSheet(wb);}catch(exW){console.warn('Clima no leido:',exW);}
       window._comSemana=null;
       /* actualizar todo */
       var diaData=renderSemaforo(ultimaFecha);
@@ -2472,6 +2483,189 @@ function renderConsumo(){
   }
   h+='</div>';
   body.innerHTML=h;
+}
+
+/* ═══════════════════════════════════════════
+   CLIMA DEL DIA (Open-Meteo, Quilpue) Y VENTA ESPERADA
+   Un dia es "afectado por clima" con lluvia de 10 mm o mas, o tormenta electrica.
+   La venta esperada es el promedio de los mismos dias de la semana (sin clima adverso) de las ultimas 8 semanas.
+═══════════════════════════════════════════ */
+var CLIMA={};            /* 'AAAA-MM-DD' -> {label,mm,tmax,tmin,afectado} */
+var CLIMA_TRIED={};
+var CLIMA_LAT=-33.0475,CLIMA_LON=-71.4425,CLIMA_UMBRAL=10;
+var CLIMA_DIAS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+var CLIMA_ICONO={'Tormenta':'⛈️','Lluvia fuerte':'🌧️','Lluvia':'🌧️','Llovizna':'🌦️','Niebla':'🌫️','Nublado':'☁️','Parcialmente nublado':'⛅','Despejado':'☀️'};
+
+function climaLabel(code,mm){
+  code=code||0;mm=mm||0;
+  if(code>=95)return 'Tormenta';
+  if(mm>=CLIMA_UMBRAL)return 'Lluvia fuerte';
+  if(mm>=3)return 'Lluvia';
+  if(mm>=0.5)return 'Llovizna';
+  if(code===45||code===48)return 'Niebla';
+  if(code===3)return 'Nublado';
+  if(code===1||code===2)return 'Parcialmente nublado';
+  return 'Despejado';
+}
+function climaAfect(code,mm){return (mm||0)>=CLIMA_UMBRAL||(code||0)>=95;}
+function climaIso(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function climaHoy(){return climaIso(new Date());}
+function climaAdd(iso,n){var d=new Date(iso+'T12:00');d.setDate(d.getDate()+n);return climaIso(d);}
+function climaDiff(a,b){return Math.round((new Date(b+'T12:00')-new Date(a+'T12:00'))/86400000);}
+function climaClp(n){return '$'+Math.round(n||0).toLocaleString('es-CL');}
+
+/* cache en el navegador (solo dias ya cerrados) */
+function climaCacheLoad(){
+  try{
+    var o=JSON.parse(localStorage.getItem('bk_clima_v1')||'{}');
+    Object.keys(o).forEach(function(k){var v=o[k];if(!CLIMA[k])CLIMA[k]={label:climaLabel(v[0],v[1]),mm:v[1],tmax:v[2],tmin:v[3],afectado:climaAfect(v[0],v[1])};});
+  }catch(e){}
+}
+function climaCacheSave(nuevos){
+  try{
+    var o=JSON.parse(localStorage.getItem('bk_clima_v1')||'{}');
+    Object.keys(nuevos).forEach(function(k){o[k]=nuevos[k];});
+    localStorage.setItem('bk_clima_v1',JSON.stringify(o));
+  }catch(e){}
+}
+/* hoja CLIMA DIARIO del Excel (si existe) */
+function parseClimaSheet(wb){
+  var sn=null;
+  wb.SheetNames.forEach(function(n){var c=String(n).toLowerCase().replace(/\s+/g,'');if(c.indexOf('clima')>=0)sn=n;});
+  if(!sn)return;
+  var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:true});
+  for(var i=1;i<aoa.length;i++){
+    var r=aoa[i],f=toISO(r[0]);
+    if(!f)continue;
+    CLIMA[f]={label:String(r[1]||'').trim()||'Sin dato',mm:Number(r[2])||0,tmax:Number(r[3])||0,tmin:Number(r[4])||0,afectado:/^s/i.test(String(r[5]||''))};
+  }
+}
+/* consulta Open-Meteo solo para los dias que faltan (lo mas reciente) */
+function climaFetch(from,to,done){
+  var need=[];
+  for(var d=from;d<=to;d=climaAdd(d,1)){if(!CLIMA[d]&&!CLIMA_TRIED[d])need.push(d);}
+  if(!need.length){if(done)done(false);return;}
+  need.forEach(function(d){CLIMA_TRIED[d]=true;});
+  var mn=need[0],mx=need[need.length-1],hoy=climaHoy(),corte=climaAdd(hoy,-7);
+  var base='latitude='+CLIMA_LAT+'&longitude='+CLIMA_LON+'&daily=weather_code,precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=America%2FSantiago';
+  var urls=[];
+  if(mn<=corte)urls.push('https://archive-api.open-meteo.com/v1/archive?'+base+'&start_date='+mn+'&end_date='+(mx<corte?mx:corte));
+  if(mx>corte){var past=Math.min(92,climaDiff(mn>corte?mn:corte,hoy)+1);urls.push('https://api.open-meteo.com/v1/forecast?'+base+'&past_days='+past+'&forecast_days=1');}
+  Promise.all(urls.map(function(u){return fetch(u).then(function(r){return r.json();});})).then(function(res){
+    var nuevos={},cambio=false;
+    res.forEach(function(j){
+      if(!j||!j.daily)return;
+      var q=j.daily;
+      q.time.forEach(function(t,i){
+        if(CLIMA[t]||t<mn||t>mx)return;
+        var code=q.weather_code[i],mm=q.precipitation_sum[i],tx=q.temperature_2m_max[i],tn=q.temperature_2m_min[i];
+        CLIMA[t]={label:climaLabel(code,mm),mm:mm||0,tmax:tx,tmin:tn,afectado:climaAfect(code,mm)};
+        cambio=true;
+        if(t<hoy)nuevos[t]=[code,mm,tx,tn];
+      });
+    });
+    climaCacheSave(nuevos);
+    if(done)done(cambio);
+  }).catch(function(){if(done)done(false);});
+}
+
+/* venta y servicios por dia (la funcion bkVentaRows la define cada app) */
+var _climaAggKey='',_climaAgg=null;
+function climaAgg(){
+  var rows=bkVentaRows(),key=rows.length+'|'+(rows.length?rows[rows.length-1].fecha:'');
+  if(_climaAgg&&key===_climaAggKey)return _climaAgg;
+  var by={};
+  rows.forEach(function(r){var d=by[r.fecha]||(by[r.fecha]={venta:0,serv:0});d.venta+=r.venta;d.serv++;});
+  _climaAggKey=key;_climaAgg=by;return by;
+}
+function climaEsperado(dia,agg){
+  var dt=new Date(dia+'T12:00'),wd=dt.getDay(),lim=climaAdd(dia,-56),same=[],all=[];
+  Object.keys(agg).forEach(function(k){
+    if(k>=dia||k<lim)return;
+    var c=CLIMA[k];if(c&&c.afectado)return;
+    if(agg[k].venta<=0)return;
+    all.push(agg[k]);
+    if(new Date(k+'T12:00').getDay()===wd)same.push(agg[k]);
+  });
+  var base=same.length>=3?same:all;
+  if(base.length<3)return null;
+  var m=function(f){return base.reduce(function(s,x){return s+x[f];},0)/base.length;};
+  return {venta:m('venta'),serv:m('serv'),n:base.length,mismoDia:same.length>=3};
+}
+function climaDia(dia){
+  var agg=climaAgg(),a=agg[dia],c=CLIMA[dia],e=a?climaEsperado(dia,agg):null;
+  var dev=(a&&e&&e.venta>0)?(a.venta-e.venta)/e.venta:null;
+  return {fecha:dia,clima:c||null,venta:a?a.venta:0,serv:a?a.serv:0,esp:e,dev:dev};
+}
+/* explicacion en palabras sencillas */
+function climaVeredicto(info){
+  var c=info.clima;
+  if(!c)return {tipo:'sin',txt:'No pude consultar el clima de este día.'};
+  var dow=CLIMA_DIAS[new Date(info.fecha+'T12:00').getDay()];
+  if(info.fecha===climaHoy())return {tipo:'hoy',txt:'El día todavía no termina, así que la comparación con lo normal aún no sirve.'};
+  if(info.dev==null)return {tipo:'sin',txt:'No hay suficientes días parecidos para comparar.'};
+  var pct=Math.round(Math.abs(info.dev)*100);
+  if(c.afectado&&info.dev<=-0.2)return {tipo:'clima',txt:'Llovió fuerte y se nota: vendimos un '+pct+'% menos de lo normal para un '+dow+'. El clima explica esta baja.'};
+  if(c.afectado)return {tipo:'ok',txt:'Hubo lluvia fuerte, pero igual se vendió cerca de lo normal para un '+dow+'.'};
+  if(info.dev<=-0.25)return {tipo:'otra',txt:'El día no tuvo lluvia fuerte, así que el clima no lo explica: vendimos un '+pct+'% menos de lo normal para un '+dow+'. Conviene revisar ausencias, agenda o si faltó gente.'};
+  if(info.dev>=0.2)return {tipo:'bien',txt:'Buen día: vendimos un '+pct+'% más de lo normal para un '+dow+'.'};
+  return {tipo:'ok',txt:'Día normal para un '+dow+'.'};
+}
+/* resumen de un periodo: dias afectados y venta perdida estimada */
+function climaPeriodo(from,to){
+  var agg=climaAgg(),dias=[],afect=0,perdida=0,real=0;
+  Object.keys(agg).sort().forEach(function(f){
+    if(f<from||f>to)return;
+    var i=climaDia(f);dias.push(i);real+=i.venta;
+    if(i.clima&&i.clima.afectado&&f!==climaHoy()){afect++;if(i.esp)perdida+=Math.max(0,i.esp.venta-i.venta);}
+  });
+  return {dias:dias,afect:afect,perdida:perdida,real:real,sinClima:real+perdida};
+}
+function climaTexto(i){
+  var c=i.clima;if(!c)return 'sin dato de clima';
+  return c.label+(c.mm>=0.5?', '+String(Math.round(c.mm*10)/10).replace('.',',')+' mm':'')+(c.tmax!=null?', '+Math.round(c.tmax)+'° / '+Math.round(c.tmin)+'°':'');
+}
+climaCacheLoad();
+
+function bkVentaRows(){return ALL_ROWS.map(function(r){return {fecha:r.fecha,venta:valCaja(r)};});}
+
+/* bloque "Clima y venta esperada" del Resumen (dia o semana) */
+function climaResumen(esSemana){
+  var rg=window._resRango;if(!rg)return {html:'',msg:'',badge:'—'};
+  var falta=false,pendiente=false;
+  for(var d=rg.start;d<=rg.end;d=climaAdd(d,1)){if(!CLIMA[d]){falta=true;if(!CLIMA_TRIED[d])pendiente=true;}}
+  if(pendiente&&!window._climaPidiendo){
+    window._climaPidiendo=true;
+    climaFetch(rg.start,rg.end,function(){window._climaPidiendo=false;if(window._resRedraw)window._resRedraw();});
+  }
+  if(window._climaPidiendo||pendiente)return {html:'<div style="font-size:12px;color:var(--gris-s)">Consultando el clima…</div>',msg:'',badge:'consultando…'};
+  var box=function(tipo,t){
+    var bg=tipo==='clima'?'var(--azu-s)':tipo==='otra'?'var(--nar-s)':tipo==='bien'?'var(--vrd-s)':'var(--cr2)';
+    var col=tipo==='clima'?'var(--azu)':tipo==='otra'?'var(--nar)':tipo==='bien'?'var(--vrd)':'var(--gris)';
+    return '<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:'+bg+';color:'+col+';font-size:12.5px;line-height:1.55;font-weight:600">'+t+'</div>';
+  };
+  var dif=function(i){return i.dev==null?'—':'<b style="color:'+(i.dev<=-0.2?'var(--roj)':i.dev>=0.2?'var(--vrd)':'var(--gris)')+'">'+(i.dev>0?'+':'')+Math.round(i.dev*100)+'%</b>';};
+  if(!esSemana){
+    var i=climaDia(rg.start),v=climaVeredicto(i),c=i.clima,dow=CLIMA_DIAS[new Date(rg.start+'T12:00').getDay()];
+    if(!c)return {html:'<div style="font-size:12px;color:var(--gris-s)">No pude consultar el clima de este día (sin conexión).</div>',msg:'',badge:'sin dato'};
+    var h='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px"><div style="font-size:34px;line-height:1">'+(CLIMA_ICONO[c.label]||'🌡️')+'</div><div><div style="font-size:14px;font-weight:800">'+c.label+'</div><div style="font-size:11.5px;color:var(--gris)">'+climaTexto(i).replace(c.label+', ','').replace(c.label,'')+'</div></div></div>'+
+      frow('Venta del día','<b>'+climaClp(i.venta)+'</b>')+
+      frow('Venta esperada para un '+dow,i.esp?climaClp(i.esp.venta):'sin datos suficientes')+
+      frow('Diferencia',dif(i))+
+      frow('Servicios del día / esperados',i.serv+' / '+(i.esp?Math.round(i.esp.serv*10)/10:'—'))+
+      box(v.tipo,v.txt)+
+      '<div style="margin-top:8px;font-size:10.5px;color:var(--gris-s)">Lluvia fuerte = 10 mm o más, o tormenta. Lo esperado es el promedio de los '+dow+' de las últimas 8 semanas sin clima adverso.</div>';
+    return {html:h,msg:'\n\nClima: '+climaTexto(i)+'. '+v.txt,badge:c.label};
+  }
+  var p=climaPeriodo(rg.start,rg.end);
+  var t='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--gris);font-size:10.5px;text-transform:uppercase;text-align:left"><th style="padding:6px 8px">Día</th><th style="padding:6px 8px">Clima</th><th style="padding:6px 8px;text-align:right">Venta</th><th style="padding:6px 8px;text-align:right">Esperada</th><th style="padding:6px 8px;text-align:right">Dif.</th></tr></thead><tbody>';
+  p.dias.forEach(function(i){
+    var af=i.clima&&i.clima.afectado;
+    t+='<tr style="border-top:1px solid var(--lin);'+(af?'background:var(--azu-s)':'')+'"><td style="padding:6px 8px;white-space:nowrap">'+CLIMA_DIAS[new Date(i.fecha+'T12:00').getDay()].slice(0,3)+' '+i.fecha.slice(8)+'/'+i.fecha.slice(5,7)+'</td><td style="padding:6px 8px">'+(i.clima?(CLIMA_ICONO[i.clima.label]||'')+' '+i.clima.label+(i.clima.mm>=0.5?' ('+Math.round(i.clima.mm)+' mm)':''):'sin dato')+'</td><td style="padding:6px 8px;text-align:right">'+climaClp(i.venta)+'</td><td style="padding:6px 8px;text-align:right;color:var(--gris)">'+(i.esp?climaClp(i.esp.venta):'—')+'</td><td style="padding:6px 8px;text-align:right">'+(i.fecha===climaHoy()?'<span style="color:var(--gris-s)">en curso</span>':dif(i))+'</td></tr>';
+  });
+  t+='</tbody></table>';
+  var resumen=p.afect?'Hubo '+p.afect+' '+(p.afect===1?'día':'días')+' de lluvia fuerte esta semana. Se estima que se dejaron de vender '+climaClp(p.perdida)+' por eso: sin ese efecto la venta de la semana habría sido de unos '+climaClp(p.sinClima)+'.':'No hubo días de lluvia fuerte esta semana, así que el clima no explica diferencias en la venta.';
+  return {html:t+box(p.afect?'clima':'ok',resumen),msg:'\n\nClima de la semana: '+(p.afect?p.afect+' '+(p.afect===1?'día':'días')+' de lluvia fuerte; se estima que se dejaron de vender '+climaClp(p.perdida)+' por eso.':'no hubo días de lluvia fuerte.'),badge:p.afect?p.afect+' '+(p.afect===1?'día':'días')+' de lluvia fuerte':'sin lluvia fuerte'};
 }
 
 if('serviceWorker' in navigator){
