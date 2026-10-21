@@ -429,6 +429,12 @@ footer{text-align:center;color:var(--gris-s);font-size:10px;padding:20px 0;margi
     </div>
   </div>
 
+  <!-- SERVICIOS POR TIPO -->
+  <div class="panel" style="margin-bottom:12px">
+    <div class="panel-h"><h3>🧩 Servicios, adicionales y retiros</h3></div>
+    <div id="resTipos" style="padding:12px 14px"><div class="empty"><p>Carga el Excel.</p></div></div>
+  </div>
+
   <!-- CLIMA Y VENTA ESPERADA -->
   <div class="panel" style="margin-bottom:12px">
     <div class="panel-h"><h3>🌦️ Clima y venta esperada</h3><span class="badge badge-rosa" id="resClimaBadge">—</span></div>
@@ -1052,6 +1058,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   var canjeTotal=canjes.reduce(function(s,r){return s+(r.precio-(r.giftAdic||0));},0);
   var gi=giftResumen(canjes,canjeTotal);
   var clm=climaResumen(esSemana);
+  var tps=tiposResumen(rows);
   /* Esmaltado permanente Cuidado Superior: servicio premium, destacado en negrita y verde */
   var premRows=rows.filter(function(r){return isPremiumSvc(r.serv);});
   var premTot={},premPer={};
@@ -1223,6 +1230,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   }).join('');
 
   /* Gift cards */
+  document.getElementById('resTipos').innerHTML=tps.html;
   document.getElementById('resClima').innerHTML=clm.html;
   txt('resClimaBadge',clm.badge);
   document.getElementById('resGift').innerHTML=gi.html;
@@ -1241,7 +1249,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
     pagoOrd.filter(function(pg){return propPagoMap[pg];}).forEach(function(pg){L.push('- '+pgL(pg)+': '+clp(propPagoMap[pg].total));});
   }
   L.push('');
-  L.push('Para cuadrar la caja, en efectivo tiene que haber '+clp(totalEfectivoFisico)+' (las ventas más las propinas en efectivo).'+gi.msg+premMsg+clm.msg);
+  L.push('Para cuadrar la caja, en efectivo tiene que haber '+clp(totalEfectivoFisico)+' (las ventas más las propinas en efectivo).'+gi.msg+premMsg+tps.msg+clm.msg);
   L.push('');
   if(totalAnti>0){
     L.push('Se entregaron '+clp(totalAnti)+' en anticipos:');
@@ -1436,6 +1444,7 @@ function procesarRegistroBuffer(arrayBuffer){
       var cAnti=fc(['anticipo']);
       var cProp=fc(['propina','propinas']);
       var cTipoMov=fc(['tipodemovimiento']),cAdic=fc(['montopagoadicional']),cMedAdic=fc(['mediopagoadicional']);
+      var cMad=fc(['serviciomadre']),cAd1=fc(['adicional1']),cAd2=fc(['adicional2']),cRetC=fc(['retiro']);
       if(!cF||!cP||!cV){alert('Columnas no encontradas.');return;}
 
       ALL_ROWS=[];CLI_DATA={};
@@ -1459,7 +1468,8 @@ function procesarRegistroBuffer(arrayBuffer){
         /* canje de gift card: servicio pagado con una tarjeta que se vendio antes (esa plata esta en CONTROL GIFT CARDS) */
         var esGift=canon(pago).indexOf('gift')>=0||(cTipoMov&&canon(r[cTipoMov])==='canje')||canon(serv).indexOf('gift')>=0;
         var gAdic=cAdic?giftNum(r[cAdic]):0;
-        ALL_ROWS.push({fecha:f,prof:p,precio:v,cli:cli,serv:serv,estado:estado,nueva:nueva,primera:primera||f,pago:pago,anti:anti,prop:prop,gift:esGift,giftAdic:esGift?Math.min(gAdic,v):0,giftMedio:cMedAdic?String(r[cMedAdic]||'').trim():''});
+        var tp=bkTipo(r,{madre:cMad,ad1:cAd1,ad2:cAd2,ret:cRetC},serv);
+        ALL_ROWS.push({madre:tp.madre,ad1:tp.ad1,ad2:tp.ad2,retiro:tp.retiro,fecha:f,prof:p,precio:v,cli:cli,serv:serv,estado:estado,nueva:nueva,primera:primera||f,pago:pago,anti:anti,prop:prop,gift:esGift,giftAdic:esGift?Math.min(gAdic,v):0,giftMedio:cMedAdic?String(r[cMedAdic]||'').trim():''});
         if(f>ultimaFecha)ultimaFecha=f;
         /* construir CLI_DATA */
         if(!CLI_DATA[cli]){CLI_DATA[cli]={cli:cli,n:0,total:0,servicios:[],prof:p,profHabitual:p,profCounts:{},ultima:'',primera:primera||f,estado:estado,nueva:nueva,ultimoServ:''};}
@@ -2666,6 +2676,146 @@ function climaResumen(esSemana){
   t+='</tbody></table>';
   var resumen=p.afect?'Hubo '+p.afect+' '+(p.afect===1?'día':'días')+' de lluvia fuerte esta semana. Se estima que se dejaron de vender '+climaClp(p.perdida)+' por eso: sin ese efecto la venta de la semana habría sido de unos '+climaClp(p.sinClima)+'.':'No hubo días de lluvia fuerte esta semana, así que el clima no explica diferencias en la venta.';
   return {html:t+box(p.afect?'clima':'ok',resumen),msg:'\n\nClima de la semana: '+(p.afect?p.afect+' '+(p.afect===1?'día':'días')+' de lluvia fuerte; se estima que se dejaron de vender '+climaClp(p.perdida)+' por eso.':'no hubo días de lluvia fuerte.'),badge:p.afect?p.afect+' '+(p.afect===1?'día':'días')+' de lluvia fuerte':'sin lluvia fuerte'};
+}
+
+/* ═══════════════════════════════════════════
+   SERVICIO MADRE / ADICIONALES / RETIRO
+   Las columnas del Registro Diario son la fuente. Si una fila las trae vacias (se escribio solo el texto del servicio),
+   se clasifica por el texto con las mismas reglas que se usaron para completar el historial.
+═══════════════════════════════════════════ */
+var BKC_SIN='Sin más adicionales',BKC_SINRET='Sin retiro';
+var BKC_VOCAB=['esmaltado','esmaltados','permanente','pedicura','manicura','softgel','kapping','francesa','francesas','depilacion','nivelacion','retiro','tradicional','reparacion','reparaciones','diseno','disenos','efecto','efectos','decoracion','cuidado','superior','polygel','lifting','perfilado','cejas','pestanas','axilas','axila','rebaje','menton','patilla','patillas','facial','completo','completa','extension','fortalecedor','limpieza','manos','pies','promocion','pierna','espalda','degrade','parche','parches'];
+function bkcRatio(a,b){
+  /* similitud = 2*subsecuencia comun mas larga / (largo a + largo b) */
+  var m=a.length,n=b.length,prev=new Array(n+1).fill(0),cur;
+  for(var i=1;i<=m;i++){cur=new Array(n+1).fill(0);for(var j=1;j<=n;j++){cur[j]=a[i-1]===b[j-1]?prev[j-1]+1:Math.max(prev[j],cur[j-1]);}prev=cur;}
+  return 2*prev[n]/(m+n);
+}
+function bkcFixTypos(s){
+  return s.split(' ').map(function(w){
+    if(w.length>=5&&/^[a-z]+$/.test(w)&&BKC_VOCAB.indexOf(w)<0){
+      var best=null,bs=0.78;
+      BKC_VOCAB.forEach(function(v){var r=bkcRatio(w,v);if(r>bs){bs=r;best=v;}});
+      return best||w;
+    }
+    return w;
+  }).join(' ');
+}
+function bkcNorm(t){
+  t=String(t==null?'':t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9+&\/,.()\- ]/g,' ').replace(/\s+/g,' ').trim();
+  return bkcFixTypos(t);
+}
+var BKC_ZONAS=[[/perfilad/,'Perfilado de cejas'],[/\bcejas?\b/,'Cejas'],[/\bbozo\b/,'Bozo'],[/menton|mento/,'Mentón'],[/cuello|papada/,'Cuello papada'],[/patilla/,'Patilla'],[/\bnariz\b/,'Nariz'],[/rostro|facial|cara completa/,'Rostro completo'],[/rebaje (corto)/,'Rebaje corto'],[/rebaje (largo)/,'Rebaje largo'],[/rebaje (completo)/,'Rebaje completo'],[/inter ?glute/,'Inter glúteos'],[/axila/,'Axilas'],[/medio brazo|medios brazos/,'Medio brazo'],[/brazo entero|brazos? completo|brazos/,'Brazo entero'],[/abdomen bajo|vientre bajo/,'Abdomen bajo'],[/abdomen completo|abdomen|vientre/,'Abdomen completo'],[/espalda baja/,'Espalda baja'],[/espalda completa|espalda/,'Espalda completa'],[/glute/,'Glúteos'],[/media pierna|medias piernas|1\/2 pierna/,'Media pierna'],[/pierna completa|piernas completas|piernas?/,'Pierna completa'],[/dedos (de )?(las )?manos|dedos manos/,'Dedos manos'],[/dedos (de )?(los )?pies|dedos pies/,'Dedos pies'],[/rebaje/,'Rebaje completo']];
+var BKC_PEST=[[/extension.*(rimel)|rimel/,'Extensión efecto rímel'],[/extension.*tecnolog|tecnologic/,'Extensión tecnológica'],[/extension|extensiones/,'Extensión clásica'],[/lifting.*pesta|pesta.*lifting|lifting/,'Lifting de pestañas'],[/retoque.*pesta|retoque/,'Retoque de pestañas'],[/fortalec/,'Fortalecedor de pestañas']];
+function bkcCore(texto){
+  var s=bkcNorm(texto),out={madre:'',a1:BKC_SIN,a2:BKC_SIN,retiro:BKC_SINRET};
+  if(!s)return out;
+  if(/llavero|aceite|crema|producto|cortacuticula|repujador|lima|esmalte \d|tarjeta|regalo/.test(s)&&!/esmalt|manicur|pedicur|nivel|soft|kapp|poly/.test(s)){out.madre='Productos';return out;}
+  var retiro='',r=s;
+  if(/retiro|retirar|remocion|sacar/.test(s)){
+    if(/retiro (de )?(el |la |los )?(soft ?gel|gel)|soft ?gel.*retiro/.test(s))retiro='Retiro de softgel';
+    else if(/k?apping|capping|kappi/.test(s)&&/retiro|retirar/.test(s))retiro='Retiro de kapping';
+    else if(/poly ?gel/.test(s)&&/retiro/.test(s))retiro='Retiro de PolyGel';
+    else retiro='Retiro de esmalte';
+    r=s.replace(/(retiro|retirar|remocion)( de)?( el| la| los)?( esmalte| esmaltado| soft ?gel| k?apping| capping| poly ?gel| gel| uñas| unas| acrilico| permanente)?( permanente)?/g,' ');
+  }
+  out.retiro=retiro||BKC_SINRET;
+  var has=function(p){return p.test(r);},adic=[],add=function(x){if(adic.indexOf(x)<0)adic.push(x);},madre='';
+  if(has(/manos y pies|promo/))madre='Promoción manos y pies';
+  else if(BKC_PEST.some(function(p){return p[0].test(r);})&&!has(/esmalt|manicur/)){
+    for(var i=0;i<BKC_PEST.length;i++){if(BKC_PEST[i][0].test(r)){madre=BKC_PEST[i][1];break;}}
+    if(has(/perfilad|cejas?/))add('Perfilado de cejas');
+  }
+  else if(has(/perfilad/)&&!has(/esmalt|manicur|pedicur/))madre='Perfilado de cejas';
+  else if(has(/depil|bozo|menton|axila|rebaje|pierna|espalda|patilla|nariz|papada|abdomen|glute|brazo|cuello|rostro|facial|\bcejas?\b/)&&!has(/esmalt|manicur|pedicur|nivel|soft|k?apping|poly|\bspa\b/))madre='Depilación';
+  else if(has(/pedicur|\bpedi\b/)){madre='Pedicura';if(has(/esmalt|permanente|semi|frances|degrade/))add('Esmaltado permanente en pies');}
+  else if(has(/cuidado sup/))madre='Cuidado Superior';
+  else if(has(/k?apping|capping|kappi/))madre='Kapping';
+  else if(has(/poly ?gel/))madre='PolyGel';
+  else if(has(/soft ?gel/))madre='Softgel';
+  else if(has(/nivelaci|nivelar/))madre='Nivelación';
+  else if(has(/acril/))madre='Acrílico';
+  else if(has(/tradicional|manicur(a|e)? ?(tradicional|simple|basica)?$/)&&!has(/permanente|semi|frances|degrade|efecto|diseno/))madre='Manicura tradicional';
+  else if(has(/limpieza/))madre='Limpieza de manos';
+  else if(has(/\bspa\b/)&&!has(/esmalt|permanente|semi|frances|degrade|efecto|diseno|nivel/))madre='Spa de manos';
+  else if(has(/esmalt|permanente|semi|gel color|frances|degrade|ombre|efecto|ojo de gato|diseno|decoracion|unas?|pack/))madre='Esmaltado permanente';
+  else if(has(/manicur/))madre='Manicura tradicional';
+  else if(has(/repar|parche|quebr/))madre='Reparación de uña';
+  else if(retiro)madre='Solo retiro';
+  else return out;
+  if(retiro&&madre==='Esmaltado permanente'&&!has(/esmalt|permanente|semi|frances|degrade|efecto|diseno|decoracion|pack|nivel|k?apping|soft|poly/))madre='Solo retiro';
+  if(madre!=='Promoción manos y pies'){
+    if(has(/efecto|ojo de gato|cat ?eye|espejo|cromad|aurora|esfumad|magnetic|glitter/))add('Efecto');
+    if(has(/diseno|dibujo|sticker|stiker|figura|flor|arte/))add('Diseño');
+    if(has(/frances/))add('Francesa');
+    if(has(/degrade|ombre|baby ?boom/))add('Degradé');
+    if(has(/decoracion|pedreria|piedras|cristal|brillo/))add('Decoración');
+    if(has(/repar|parche|quebr|arregl/)&&madre!=='Reparación de uña')add('Reparación');
+    if(has(/\bspa\b/)&&madre!=='Spa de manos')add('Spa de manos');
+    if(has(/nivelaci|nivelar/)&&madre!=='Nivelación')add('Nivelación');
+    if(has(/poly ?gel/)&&madre!=='PolyGel')add('PolyGel');
+    if(madre==='Depilación'||madre==='Perfilado de cejas'||madre.indexOf('Perfilado')>=0){
+      BKC_ZONAS.forEach(function(z){
+        var n=z[1];
+        if(z[0].test(r)&&adic.indexOf(n)<0&&!(madre==='Perfilado de cejas'&&n==='Perfilado de cejas')){
+          if(n==='Rebaje completo'&&adic.some(function(a){return a.indexOf('Rebaje')===0;}))return;
+          if(n==='Cejas'&&adic.indexOf('Perfilado de cejas')>=0)return;
+          add(n);
+        }
+      });
+      if(has(/tinte/))add('Tinte de cejas');
+    }
+  }
+  if(has(/tinte/)&&adic.indexOf('Tinte de cejas')<0&&(madre==='Perfilado de cejas'||madre==='Depilación'))add('Tinte de cejas');
+  out.madre=madre;if(adic[0])out.a1=adic[0];if(adic[1])out.a2=adic[1];
+  return out;
+}
+var BKC_PROD=[[/aceite/,'Aceite de cutículas'],[/crema/,'Crema de manos'],[/llavero/,'Llavero'],[/fortalec/,'Fortalecedor de pestañas']];
+function bkClasif(texto){
+  var s0=bkcNorm(texto),prods=BKC_PROD.filter(function(p){return p[0].test(s0);}).map(function(p){return p[1];});
+  if(!prods.length)return bkcCore(texto);
+  var rest=s0.replace(/aceite( de)?( cuticulas?)?|cuticulas?|crema( hidratante| de manos)?|llavero|fortalec\w*( de)?( pestanas?)?|\(\d+\)/g,' ').replace(/[+,\/&]/g,' ').replace(/\s+/g,' ').trim();
+  var core=rest?bkcCore(rest):{madre:'',a1:BKC_SIN,a2:BKC_SIN,retiro:BKC_SINRET};
+  var out={madre:core.madre,a1:core.a1,a2:core.a2,retiro:core.retiro},adic;
+  if(!core.madre){out.madre='Productos';adic=[];}
+  else adic=[core.a1,core.a2].filter(function(a){return a!==BKC_SIN;});
+  prods.forEach(function(p){if(adic.indexOf(p)<0)adic.push(p);});
+  out.a1=adic[0]||BKC_SIN;out.a2=adic[1]||BKC_SIN;
+  return out;
+}
+/* columnas del Registro Diario; si estan vacias se clasifica por el texto del servicio. cols: {madre,ad1,ad2,ret} nombres de columna o null */
+function bkTipo(r,cols,serv){
+  var g=function(k){return k?String(r[k]==null?'':r[k]).trim():'';};
+  var madre=g(cols.madre);
+  if(madre)return {madre:madre,ad1:g(cols.ad1)||BKC_SIN,ad2:g(cols.ad2)||BKC_SIN,retiro:g(cols.ret)||BKC_SINRET,auto:false};
+  var c=bkClasif(serv);
+  return {madre:c.madre,ad1:c.a1,ad2:c.a2,retiro:c.retiro,auto:true};
+}
+
+/* ---------- tipos de servicio del periodo (Resumen del dia y de la semana) ---------- */
+function tiposResumen(rows){
+  var by={},ret={},ad={},retTot=0,sinClas=0;
+  var PROD=['Aceite de cutículas','Crema de manos','Llavero','Fortalecedor de pestañas'];
+  rows.forEach(function(r){
+    var m=r.madre||'(sin clasificar)';if(!r.madre)sinClas++;
+    by[m]=(by[m]||0)+1;
+    if(r.retiro&&r.retiro!==BKC_SINRET){ret[r.retiro]=(ret[r.retiro]||0)+1;retTot++;}
+    [r.ad1,r.ad2].forEach(function(a){if(a&&a!==BKC_SIN)ad[a]=(ad[a]||0)+1;});
+  });
+  var ord=function(o){return Object.keys(o).sort(function(a,b){return o[b]-o[a]||(a<b?-1:1);});};
+  var chips=function(o,keys,color){return keys.map(function(k){return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 9px;border-radius:12px;background:'+color+';font-size:11.5px"><b>'+o[k]+'</b> '+k+'</span>';}).join('');};
+  var prods=ord(ad).filter(function(a){return PROD.indexOf(a)>=0;});
+  var adics=ord(ad).filter(function(a){return PROD.indexOf(a)<0;}).slice(0,10);
+  var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">';
+  h+='<div><div style="font-size:10px;font-weight:800;color:var(--gris-s);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Servicios por tipo</div>'+chips(by,ord(by),'var(--cr2)')+'</div>';
+  h+='<div><div style="font-size:10px;font-weight:800;color:var(--gris-s);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Adicionales ('+adics.reduce(function(a,k){return a+ad[k];},0)+')</div>'+(adics.length?chips(ad,adics,'var(--rosa-s)'):'<span style="font-size:11.5px;color:var(--gris-s)">Sin adicionales</span>')+
+    '<div style="font-size:10px;font-weight:800;color:var(--gris-s);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px">Retiros ('+retTot+')</div>'+(retTot?chips(ret,ord(ret),'var(--azu-s)'):'<span style="font-size:11.5px;color:var(--gris-s)">Sin retiros</span>')+
+    (prods.length?'<div style="font-size:10px;font-weight:800;color:var(--gris-s);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px">Productos</div>'+chips(ad,prods,'var(--vrd-s)'):'')+'</div></div>';
+  if(sinClas)h+='<div style="margin-top:8px;font-size:11px;color:var(--nar)">'+sinClas+' '+(sinClas===1?'servicio sin clasificar':'servicios sin clasificar')+': completa su Servicio madre en el Registro Diario.</div>';
+  var msg='';
+  var top=ord(ad).filter(function(a){return PROD.indexOf(a)<0;})[0];
+  msg='\n\nRetiros: '+retTot+(top?'. El adicional que más salió fue '+top.toLowerCase()+' ('+ad[top]+').':'.');
+  return {html:h,msg:msg};
 }
 
 if('serviceWorker' in navigator){
