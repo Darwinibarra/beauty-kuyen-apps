@@ -557,22 +557,22 @@ var MESES_N=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 var MESES_C=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
 /* Rutas de upsell */
-var UPSELL={"esmaltado permanente": {"siguiente": "Francesa o Degradé", "despues": "Esmaltado + Efecto", "premium": "Softgel o Kapping", "tip": "Ya conoce el esmalte permanente. Proponerle agregar un diseño o efecto sube el ticket $3.000-5.000 sin cambiar el tiempo."}, "manicura": {"siguiente": "Esmaltado Permanente", "despues": "Francesa", "premium": "Nivelacion + esmaltado", "tip": "Clienta con servicio basico. La transicion a esmaltado permanente es el primer paso. Mostrarle la diferencia de duracion."}, "francesa": {"siguiente": "Francesa + Diseño", "despues": "Nivelacion + Francesa", "premium": "Softgel + Francesa", "tip": "Le gusta la francesa. Agregar un diseño en el dedo anular o proponer nivelacion para mas duracion."}, "esmaltado + efecto": {"siguiente": "Esmaltado + 2 efectos", "despues": "Degradé completo", "premium": "Softgel + Efecto", "tip": "Ya paga por efecto. Mostrar opciones de efecto mas elaborado o combinaciones nuevas para renovar."}, "pedicura": {"siguiente": "Pedicura + Esmaltado", "despues": "Promo Manos y Pies", "premium": "Pedicura Spa", "tip": "Solo pedicura. La promo manos y pies aumenta el ticket y el tiempo de servicio — ideal para dias flojos."}, "retiro": {"siguiente": "Retiro + Esmaltado nuevo", "despues": "Retiro + Nivelacion", "premium": "Retiro + Softgel", "tip": "Viene a retirar. Es el momento ideal para proponer el servicio siguiente antes de que decida sola."}, "nivelacion": {"siguiente": "Nivelacion + Efecto", "despues": "Nivelacion + Francesa", "premium": "Kapping o Polygel", "tip": "Ya usa nivelacion. Proponer efecto o francesa agrega valor sin cambiar el proceso base."}, "softgel": {"siguiente": "Softgel + Efecto", "despues": "Softgel + Francesa", "premium": "Kapping", "tip": "Clienta premium. Renovar el diseño con efectos nuevos o proponer cambio a Kapping para mas duracion."}, "kapping": {"siguiente": "Kapping + Efecto", "despues": "Kapping + Francesa", "premium": "Polygel", "tip": "Clienta de alto ticket. Fidelizar con atencion personalizada y sugerir variaciones de diseno."}, "default": {"siguiente": "Agregar Diseño o Efecto", "despues": "Servicio Premium", "premium": "Softgel o Kapping", "tip": "Preguntar que le gusto mas de visitas anteriores para personalizar la sugerencia."}};
+var UPSELL={"esmaltado permanente": {"siguiente": "Francesa o Degradé", "despues": "Esmaltado + Efecto", "premium": "Softgel o Kapping", "tip": "Ya conoce el esmaltado permanente. Ofrécele un diseño o un efecto: suma entre $3.000 y $5.000 y no cambia el tiempo de la atención."}, "manicura": {"siguiente": "Esmaltado Permanente", "despues": "Francesa", "premium": "Nivelacion + esmaltado", "tip": "Viene por lo básico. Cuéntale cuánto más le dura el esmaltado permanente, ese es el primer paso para que lo pruebe."}, "francesa": {"siguiente": "Francesa + Diseño", "despues": "Nivelacion + Francesa", "premium": "Softgel + Francesa", "tip": "Le gusta la francesa. Propónle un diseño en el anular o una nivelación para que le dure más."}, "esmaltado + efecto": {"siguiente": "Esmaltado + 2 efectos", "despues": "Degradé completo", "premium": "Softgel + Efecto", "tip": "Ya paga por efecto. Muéstrale otros efectos o combinaciones para que se renueve."}, "pedicura": {"siguiente": "Pedicura + Esmaltado", "despues": "Promo Manos y Pies", "premium": "Pedicura Spa", "tip": "Viene solo por pedicura. La promo de manos y pies le conviene y sube el ticket, sobre todo en los días más tranquilos."}, "retiro": {"siguiente": "Retiro + Esmaltado nuevo", "despues": "Retiro + Nivelacion", "premium": "Retiro + Softgel", "tip": "Viene a retirarse el esmalte. Es el mejor momento para ofrecerle lo siguiente antes de que decida sola."}, "nivelacion": {"siguiente": "Nivelacion + Efecto", "despues": "Nivelacion + Francesa", "premium": "Kapping o Polygel", "tip": "Ya usa nivelación. Ofrécele un efecto o una francesa, se hace sobre lo mismo."}, "softgel": {"siguiente": "Softgel + Efecto", "despues": "Softgel + Francesa", "premium": "Kapping", "tip": "Es clienta de softgel. Renueva el diseño con efectos nuevos o cuéntale del kapping para que le dure más."}, "kapping": {"siguiente": "Kapping + Efecto", "despues": "Kapping + Francesa", "premium": "Polygel", "tip": "Es clienta de ticket alto. Atiéndela con cariño y ofrécele variaciones de diseño."}, "default": {"siguiente": "Agregar Diseño o Efecto", "despues": "Servicio Premium", "premium": "Softgel o Kapping", "tip": "Pregúntale qué fue lo que más le gustó la vez anterior y parte de ahí."}};
 
 /* Estacionalidad Chile - belleza */
 var ESTAC=[
-  {m:'Ene',nivel:'baja',ico:'❄️',txt:'Vacaciones, clientas fuera de la ciudad',camp:'Promo fidelizacion para las que si estan'},
-  {m:'Feb',nivel:'baja',ico:'🏖️',txt:'Fin de vacaciones, demanda aun baja',camp:'Reactivar clientas dormidas antes del inicio de ano'},
-  {m:'Mar',nivel:'alta',ico:'🚀',txt:'Vuelta a la rutina — repunte fuerte',camp:'Paquetes de inicio de ano, agenda llena'},
-  {m:'Abr',nivel:'media',ico:'📈',txt:'Estable, semana santa activa',camp:'Promo semana santa, disenos especiales'},
-  {m:'May',nivel:'media',ico:'👩',txt:'Dia de la madre — peak puntual',camp:'Promo Dia de la Madre con anticipacion'},
-  {m:'Jun',nivel:'baja',ico:'🥶',txt:'Inicio invierno, demanda baja',camp:'Servicios de cuidado (fortalecer, tratamientos)'},
-  {m:'Jul',nivel:'baja',ico:'❄️',txt:'Invierno — mes mas flojo del ano',camp:'Fidelizacion VIP, promo clientes frecuentes'},
-  {m:'Ago',nivel:'baja',ico:'🌧️',txt:'Invierno, manos cubiertas, poca motivacion estetica',camp:'Pedicura y tratamientos que no se ven pero se sienten'},
-  {m:'Sep',nivel:'alta',ico:'🌸',txt:'Primavera — repunte fiestas patrias',camp:'Disenos especiales, promos 18 septiembre'},
-  {m:'Oct',nivel:'alta',ico:'🎉',txt:'Eventos, graduaciones, temporada alta',camp:'Agenda llena, precios normales, no rebajar'},
-  {m:'Nov',nivel:'alta',ico:'🏆',txt:'Mes mas alto del ano — graduaciones, fiestas',camp:'Reservas anticipadas, lista de espera'},
-  {m:'Dic',nivel:'media',ico:'🎄',txt:'Navidad activo pero baja a fin de mes',camp:'Promos navidenas, disenos festivos'}
+  {m:'Ene',nivel:'baja',ico:'❄️',txt:'Muchas clientas están de vacaciones',camp:'Una promo para las que siguen viniendo'},
+  {m:'Feb',nivel:'baja',ico:'🏖️',txt:'Terminan las vacaciones y todavía viene poca gente',camp:'Escribirles a las clientas que no vienen hace rato antes de que parta el año'},
+  {m:'Mar',nivel:'alta',ico:'🚀',txt:'Vuelve la rutina y sube la demanda',camp:'Armar paquetes de inicio de año y llenar la agenda'},
+  {m:'Abr',nivel:'media',ico:'📈',txt:'Mes estable, con la Semana Santa',camp:'Una promo de Semana Santa y diseños especiales'},
+  {m:'May',nivel:'media',ico:'👩',txt:'Día de la Madre, un peak que dura pocos días',camp:'Lanzar la promo del Día de la Madre con tiempo'},
+  {m:'Jun',nivel:'baja',ico:'🥶',txt:'Empieza el invierno y baja la demanda',camp:'Ofrecer servicios de cuidado, como fortalecer y tratamientos'},
+  {m:'Jul',nivel:'baja',ico:'❄️',txt:'Pleno invierno, el mes más flojo del año',camp:'Cuidar a las clientas frecuentes con una promo para ellas'},
+  {m:'Ago',nivel:'baja',ico:'🌧️',txt:'Invierno, las manos andan tapadas y cuesta que se animen',camp:'Ofrecer pedicura y tratamientos que no se ven pero se sienten'},
+  {m:'Sep',nivel:'alta',ico:'🌸',txt:'Llega la primavera y las Fiestas Patrias',camp:'Diseños especiales y una promo para el 18'},
+  {m:'Oct',nivel:'alta',ico:'🎉',txt:'Hay eventos y graduaciones, temporada alta',camp:'Agenda llena y sin rebajar los precios'},
+  {m:'Nov',nivel:'alta',ico:'🏆',txt:'El mes más fuerte del año, con graduaciones y fiestas',camp:'Tomar reservas con anticipación y armar lista de espera'},
+  {m:'Dic',nivel:'media',ico:'🎄',txt:'Navidad mueve harto, pero baja a fin de mes',camp:'Promos navideñas y diseños de fiesta'}
 ];
 
 var ALL_ROWS=[];
@@ -864,15 +864,11 @@ function copyFichaWA(){
   var ticket=c.n?Math.round(c.total/c.n):0;
   var up=getUpsell(c.ultimoServ||'');
   var diasUlt=diffD(c.ultima);
-  var msg='*Beauty Kuyen — Clienta por recibir*\n\n'+
-    '👤 '+c.cli+'\n'+
-    '📅 Ultima visita: '+fmtF(c.ultima)+' (hace '+diasUlt+'d)\n'+
-    '💅 Ultimo servicio: '+(c.ultimoServ||'-')+'\n'+
-    '👩 Ultima manicurista: '+(c.prof||'-')+'\n'+
-    '👩 Manicurista habitual: '+(c.profHabitual||'-')+'\n'+
-    '🎫 Ticket promedio: '+clp(ticket)+'\n'+
-    '🎯 Sugerencia de hoy: '+up.tip+'\n\n'+
-    'Cecilia - Beauty Kuyen';
+  var msg='Chicas, les paso los datos de '+c.cli+', que viene a atenderse.\n\n'+
+    'Su última visita fue el '+fmtF(c.ultima)+' (hace '+diasUlt+' días), con '+(c.prof||'-')+', y se hizo '+(c.ultimoServ||'-')+'.\n'+
+    'Su manicurista de siempre es '+(c.profHabitual||'-')+' y en promedio gasta '+clp(ticket)+'.\n\n'+
+    'Una idea para ofrecerle: '+up.tip+'\n\n'+
+    'Ceci';
   navigator.clipboard.writeText(msg).catch(function(){
     var t=document.createElement('textarea');t.value=msg;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);
   });
@@ -905,12 +901,31 @@ function pvMarcar(ctx,enviado){
 function pvEnviadoModal(){
   if(window._pvCtx){pvMarcar(window._pvCtx,true);window._pvCtx=null;closeWA();}
 }
+function pvHash(t){var h=0;for(var i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))>>>0;return h;}
+/* nombre corto del servicio para nombrarlo en el mensaje ("esmaltado permanente", no "esmaltado permanente + diseño + retiro") */
+function pvServ(serv){var t=String(serv||'').toLowerCase().split('+')[0].replace(/\(.*?\)/g,'').trim();t=t.replace(/nivelacion/g,'nivelación').replace(/reparacion/g,'reparación').replace(/depilacion/g,'depilación').replace(/degrade/g,'degradé').replace(/pedicura/g,'pedicura');return (t&&t.length<=32)?t:'uñas';}
 function pvMensaje(tipo,nombre,serv){
-  return tipo===1?
-    'Hola '+nombre+', soy Cecilia de Beauty Kuyen!\n\nHace unos dias te atendimos con '+serv+' y queriamos saber como quedaste con el resultado.\n\nTu opinion es muy importante para nosotras. Si hubo algo que no te gusto, cuentanos y lo resolvemos.\n\nEsperamos que estes feliz con tus unas!\n\nBeauty Kuyen':
-    tipo===2?
-    'Hola '+nombre+'! Soy Cecilia de Beauty Kuyen.\n\nYa han pasado unas semanas desde tu visita con '+serv+' y es probable que ya sea tiempo de un retoque.\n\nEsta semana tenemos turnos disponibles. Te agendamos?\n\nBeauty Kuyen':
-    'Hola '+nombre+', te escribimos desde Beauty Kuyen!\n\nFue un gusto tenerte con nosotras para tu '+serv+'. Notamos que ha pasado un tiempo y te echamos de menos!\n\nPara tu proxima visita tenemos algo especial esperandote. Escribenos y coordinamos tu turno esta semana.\n\nBeauty Kuyen';
+  var n=nombre?nombre.charAt(0).toUpperCase()+nombre.slice(1).toLowerCase():'';
+  var sv=pvServ(serv);
+  var V={
+    1:[
+      'Hola '+n+'! Soy Cecilia de Beauty Kuyen 😊 Quería saber cómo te han quedado las uñas. ¿Todo bien? Si algo no te convenció, avísame no más y lo vemos.',
+      'Hola '+n+', ¿cómo estás? Te escribo de Beauty Kuyen. ¿Cómo te ha ido con tu '+sv+'? Si hay algo que no te gustó me cuentas y lo arreglamos.',
+      'Hola '+n+'! Te habla la Ceci de Beauty Kuyen. Ya van unos días desde que viniste, ¿cómo te han quedado? Cuéntame si estás contenta o si hay algo que podamos mejorar.'
+    ],
+    2:[
+      'Hola '+n+'! Soy Cecilia de Beauty Kuyen. Ya van como tres semanas desde tu '+sv+', así que debe estar tocando el retoque. ¿Te busco una hora esta semana?',
+      'Hola '+n+', ¿cómo estás? Te escribo porque ya va siendo hora de renovar tus uñas. Tengo horas disponibles esta semana, ¿quieres que te agende?',
+      'Hola '+n+'! Te escribe la Ceci de Beauty Kuyen. Ya debe estar tocando renovar tus uñas, ¿te agendo? Dime qué día te acomoda.'
+    ],
+    3:[
+      'Hola '+n+'! Soy Cecilia de Beauty Kuyen. Hace rato que no te vemos por acá y te echamos de menos 😊 ¿Cómo has estado? Si quieres volver, escríbeme y te busco una hora.',
+      'Hola '+n+', ¿cómo has estado? Me acordé de ti porque hace un tiempo que no vienes. Cuando quieras te agendo, dime qué día te acomoda.',
+      'Hola '+n+'! Te escribo de Beauty Kuyen para saber de ti. Tengo horas esta semana por si quieres venir a arreglarte las uñas. ¿Te anoto?'
+    ]
+  };
+  var arr=V[tipo]||V[3];
+  return arr[pvHash(canonSearch(nombre)+tipo)%arr.length];
 }
 /* nombres que no son una clienta real (no se les puede escribir) */
 function pvSinNombre(cli){var c=canonSearch(cli);return /sin nombre|walk ?in|clienta sin|sin identific|^cliente$|^clienta$/.test(c);}
@@ -1019,7 +1034,7 @@ function renderResumen(ultimoDia,diaData){
   var partes=ultimoDia.split('-');
   var fechaLabel=partes[2]+'/'+partes[1]+'/'+partes[0];
   window._resRango={start:ultimoDia,end:ultimoDia};
-  renderResumenCore(rows,fechaLabel,false,'Hola Darwin, resumen del '+fechaLabel+':');
+  renderResumenCore(rows,fechaLabel,false,'Hola Darwin, te paso el cierre del '+fechaLabel+':');
 }
 
 function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
@@ -1038,7 +1053,8 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   var premNames=Object.keys(premTot).sort(function(a,b){return (premPer[b]||0)-(premPer[a]||0)||premTot[b]-premTot[a];});
   var premHtml=frow('<b style="color:var(--vrd)">⭐ Cuidado Superior</b>','<b style="color:var(--vrd)">'+premRows.length+(esSemana?' en la semana':' hoy')+' · '+premAll+' en total</b>')+
     (premNames.length?premNames.map(function(k){return '<div style="font-size:10.5px;color:var(--vrd);font-weight:800;padding:3px 0 0 4px">⭐ '+k+': '+(premPer[k]||0)+' en el periodo · '+premTot[k]+' en total</div>';}).join(''):'<div style="font-size:10.5px;color:var(--gris-s);padding:3px 0 0 4px">Todavia nadie lo ha realizado. ¡Es una gran oportunidad!</div>');
-  var premMsg='\n\n⭐ Esmaltado permanente Cuidado Superior: '+premRows.length+' en el periodo ('+premAll+' en total)'+(premNames.length?'\n'+premNames.map(function(k){return '  '+k+': '+(premPer[k]||0)+' en el periodo / '+premTot[k]+' en total';}).join('\n'):'');
+  var premLista=premNames.filter(function(k){return (premPer[k]||0)>0;}).map(function(k){return k+' '+premPer[k];}).join(', ');
+  var premMsg='\n\n'+(premRows.length?'Del Esmaltado permanente Cuidado Superior hicimos '+premRows.length+' ('+premAll+' en total hasta ahora): '+premLista+'.':'No se hizo ningún Esmaltado permanente Cuidado Superior '+(esSemana?'esta semana':'hoy')+(premAll?' (llevamos '+premAll+' en total).':' (todavía no se ha hecho ninguno).'));
   var efSheet=consumoEfectivoRango();
   var nuevas=rows.filter(function(r){return r.nueva;}).length;
   var totalAnti=rows.reduce(function(s,r){return s+(r.anti||0);},0)+efSheet.reduce(function(s,c){return s+c.monto;},0);
@@ -1203,27 +1219,35 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   txt('resGiftTotal',gi.n?clp(gi.total)+' vendidas':(canjes.length+' canje(s)'));
 
   /* Mensaje Darwin */
-  var msg=saludoMsg+'\n\n'+
-    'Servicios: '+rows.length+'\n'+
-    'Venta total: '+clp(ventas)+'\n'+
-    'Ticket: '+clp(ticket)+(ticket<META_TICKET?' (bajo meta)':' OK')+'\n'+
-    'Nuevas: '+nuevas+'\nPropinas: '+clp(totalProp)+'\n\n'+
-    'Medios de pago:\n'+
-    pagoOrd.filter(function(pg){return pagoMap[pg];}).map(function(pg){
-      return '  '+pg+': '+clp(pagoMap[pg].total)+' ('+pagoMap[pg].n+' serv.)';
-    }).join('\n')+
-    (totalPropCalc>0?'\n\nPropinas por medio de pago:\n'+
-      pagoOrd.filter(function(pg){return propPagoMap[pg];}).map(function(pg){
-        return '  '+pg+': '+clp(propPagoMap[pg].total);
-      }).join('\n'):'')+
-    '\n\nEfectivo a cuadrar (ventas+propinas en efectivo): '+clp(totalEfectivoFisico)+gi.msg+premMsg+
-    (totalAnti>0?'\n\nAnticipos: '+clp(totalAnti)+'\n'+
-      Object.keys(profMap).filter(function(p){return profMap[p].anti>0;}).map(function(p){return '  '+p+': '+clp(profMap[p].anti);}).join('\n')+
-      '\n\nCaja neta: '+clp(totalEfectivoFisico-totalAnti):'\n\nSin anticipos')+
-    '\n\nPor manicurista:\n'+
-    pOrd.map(function(p){var d=profMap[p];var tk=d.np?Math.round(d.total/d.np):0;
-      return '  '+p+': '+d.n+' serv / '+clp(d.total)+' / ticket '+clp(tk)+(d.anti>0?' / anticipo '+clp(d.anti):'');
-    }).join('\n')+'\n\nCecilia - Beauty Kuyen';
+  var pgL=function(x){return x==='Debito'?'Débito':x==='Credito'?'Crédito':x;};
+  var L=[saludoMsg,''];
+  L.push('Hicimos '+rows.length+' servicios y vendimos '+clp(ventas)+', con un ticket de '+clp(ticket)+(ticket<META_TICKET?' (un poco bajo la meta).':' (sobre la meta).'));
+  L.push('Hubo '+nuevas+' '+(nuevas===1?'clienta nueva':'clientas nuevas')+' y las propinas sumaron '+clp(totalProp)+'.');
+  L.push('');
+  L.push('Cómo pagaron:');
+  pagoOrd.filter(function(pg){return pagoMap[pg];}).forEach(function(pg){L.push('- '+pgL(pg)+': '+clp(pagoMap[pg].total)+' ('+pagoMap[pg].n+')');});
+  if(totalPropCalc>0){
+    L.push('');L.push('Las propinas llegaron así:');
+    pagoOrd.filter(function(pg){return propPagoMap[pg];}).forEach(function(pg){L.push('- '+pgL(pg)+': '+clp(propPagoMap[pg].total));});
+  }
+  L.push('');
+  L.push('Para cuadrar la caja, en efectivo tiene que haber '+clp(totalEfectivoFisico)+' (las ventas más las propinas en efectivo).'+gi.msg+premMsg);
+  L.push('');
+  if(totalAnti>0){
+    L.push('Se entregaron '+clp(totalAnti)+' en anticipos:');
+    Object.keys(profMap).filter(function(p){return profMap[p].anti>0;}).forEach(function(p){L.push('- '+p+': '+clp(profMap[p].anti));});
+    L.push('Con eso, la caja neta queda en '+clp(totalEfectivoFisico-totalAnti)+'.');
+  }else{
+    L.push('No hubo anticipos.');
+  }
+  L.push('');
+  L.push('Por manicurista:');
+  pOrd.forEach(function(p){var d=profMap[p];var tk=d.np?Math.round(d.total/d.np):0;
+    L.push('- '+p+': '+d.n+' '+(d.n===1?'servicio':'servicios')+', '+clp(d.total)+' (ticket '+clp(tk)+')'+(d.anti>0?', anticipo '+clp(d.anti):''));
+  });
+  L.push('');
+  L.push('Saludos, Ceci');
+  var msg=L.join('\n');
   document.getElementById('msgDarwin').textContent=msg.replace(/\\n/g,'\n');
   window._msgDarwin=msg.replace(/\\n/g,'\n');
 }
@@ -1293,7 +1317,7 @@ function renderResumenSemana(startISO,endISO){
   }
   infoEl.textContent=rows.length+' registros · '+fechaLabel;
   infoEl.style.color='var(--vrd)';
-  var saludo='Hola Darwin, cuadre de caja semana '+fechaLabel+' (deposito sabado):';
+  var saludo='Hola Darwin, te paso el cuadre de la semana del '+fechaLabel+' (el depósito es el sábado):';
   window._resRango={start:startISO,end:endISO};
   renderResumenCore(rows,fechaLabel,true,saludo);
 }
@@ -2345,10 +2369,10 @@ function giftResumen(canjes,canjeTotal){
   h+='<div style="margin-top:8px;padding:8px 10px;background:var(--cr2);border-radius:9px;font-size:10.5px;color:var(--gris)">El canje <b>no suma</b> a la venta ni a la caja del día (la plata entró cuando se vendió la tarjeta). Solo se suma lo que la clienta pagó aparte, si lo hubo.</div></div>';
   h+='</div>';
   var msg='';
-  if(canjes.length)msg+='\n\nCanjes gift card (no incluidos en la venta ni en la caja): '+canjes.length+' servicio(s) / '+clp(canjeTotal);
+  if(canjes.length)msg+='\n\nHubo '+canjes.length+' '+(canjes.length===1?'canje':'canjes')+' de gift card por '+clp(canjeTotal)+'. Eso no cuenta en la venta ni en la caja, porque la plata entró cuando se vendió la tarjeta.';
   if(ventas.length){
-    msg+='\nGift cards vendidas (aparte, no incluidas en la venta de servicios): '+clp(tot)+' ('+ventas.length+')';
-    if(efectivo>0)msg+='\n  De eso en efectivo: '+clp(efectivo)+' (contar aparte en la caja)';
+    msg+=(canjes.length?'\n':'\n\n')+'Se vendieron gift cards por '+clp(tot)+' ('+ventas.length+'), aparte de la venta de servicios.';
+    if(efectivo>0)msg+=' De eso, '+clp(efectivo)+' fue en efectivo y hay que contarlo aparte en la caja.';
   }
   return {html:h,msg:msg,efectivo:efectivo,total:tot,n:ventas.length};
 }
