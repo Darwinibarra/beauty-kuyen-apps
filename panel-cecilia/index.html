@@ -1096,14 +1096,16 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   rows.forEach(function(r){
     var pg=normPago(r.pago||'');
     var vc=valCaja(r);
-    if(vc>0){var pgc=pagoCaja(r);if(!pagoMap[pgc])pagoMap[pgc]={n:0,total:0};pagoMap[pgc].n++;pagoMap[pgc].total+=vc;}
+    if(vc>0){pagosCaja(r).forEach(function(pp){if(!pagoMap[pp.m])pagoMap[pp.m]={n:0,total:0};pagoMap[pp.m].n++;pagoMap[pp.m].total+=pp.v;});}
     if(r.prop>0){
       if(!propPagoMap[pg])propPagoMap[pg]={n:0,total:0};
       propPagoMap[pg].n++;propPagoMap[pg].total+=r.prop;
     }
   });
-  var pagoOrd=['Efectivo','Transferencia','Debito','Credito','Otro'];
-  var pagoCols={Efectivo:'var(--vrd)',Transferencia:'var(--azu)',Debito:'var(--dor)',Credito:'var(--rosa)',Otro:'var(--gris)'};
+  var pagoOrd=['Efectivo','Transferencia','Debito','Credito','Online',PAGO_MIXTO,'Otro'];
+  var pagoCols={Efectivo:'var(--vrd)',Transferencia:'var(--azu)',Debito:'var(--dor)',Credito:'var(--rosa)',Online:'var(--azu)',Otro:'var(--gris)'};pagoCols[PAGO_MIXTO]='var(--nar)';
+  var nDivididos=rows.filter(function(r){return !r.gift&&valCaja(r)>0&&pagosCaja(r).length===2;}).length;
+  var nMixSin=rows.filter(function(r){return !r.gift&&valCaja(r)>0&&pagosCaja(r)[0].m===PAGO_MIXTO;}).length;
   txt('resPagoTotal',clp(ventas)+' total');
   var pagoHtml='';
   pagoOrd.forEach(function(pg){
@@ -1121,6 +1123,8 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
         '<span style="font-size:10.5px;color:var(--gris);min-width:56px;text-align:right">'+d.n+' · '+pct+'%</span>'+
       '</div></div>';
   });
+  if(nDivididos)pagoHtml+='<div style="font-size:11px;color:var(--gris);margin-top:4px">'+nDivididos+(nDivididos===1?' servicio se pagó':' servicios se pagaron')+' con dos medios: cada medio muestra solo su parte.</div>';
+  if(nMixSin)pagoHtml+='<div style="font-size:11px;color:var(--nar);margin-top:4px">'+nMixSin+(nMixSin===1?' servicio tiene':' servicios tienen')+' pago mixto sin detalle. Completa Medio de pago 2 y Monto pago 2 en el Registro Diario para repartirlo.</div>';
 
   /* Propinas por medio de pago — clave para el cuadre de caja */
   var totalPropCalc=pagoOrd.reduce(function(s,pg){return s+(propPagoMap[pg]?propPagoMap[pg].total:0);},0);
@@ -1181,7 +1185,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   rows.forEach(function(r){
     if(!profMap[r.prof])profMap[r.prof]={n:0,np:0,total:0,anti:0,prop:0,pagos:{}};
     profMap[r.prof].n++;if(!r.gift)profMap[r.prof].np++;profMap[r.prof].total+=valCaja(r);profMap[r.prof].anti+=r.anti||0;profMap[r.prof].prop+=r.prop||0;
-    var vcp=valCaja(r);if(vcp>0){var pg=pagoCaja(r);profMap[r.prof].pagos[pg]=(profMap[r.prof].pagos[pg]||0)+vcp;}
+    var vcp=valCaja(r);if(vcp>0){pagosCaja(r).forEach(function(pp){profMap[r.prof].pagos[pp.m]=(profMap[r.prof].pagos[pp.m]||0)+pp.v;});}
   });
   efSheet.forEach(function(c){
     if(!profMap[c.prof])profMap[c.prof]={n:0,np:0,total:0,anti:0,prop:0,pagos:{}};
@@ -1222,7 +1226,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
       (isPremiumSvc(r.serv)?'<td style="padding:7px 10px;font-weight:800;color:var(--vrd)">⭐ '+r.serv+'</td>':'<td style="padding:7px 10px">'+r.serv+'</td>')+
       '<td style="padding:7px 10px;color:var(--gris)">'+r.prof+'</td>'+
       '<td style="padding:7px 10px;text-align:right;font-weight:700'+(r.gift?';color:var(--gris-s)':'')+'">'+clp(r.precio)+'</td>'+
-      '<td style="padding:7px 10px;text-align:center;font-size:10px;color:'+(r.gift?'var(--rosa);font-weight:700':'var(--gris-s)')+'">'+(r.gift?'🎁 Canje gift card':normPago(r.pago||''))+'</td>'+
+      '<td style="padding:7px 10px;text-align:center;font-size:10px;color:'+(r.gift?'var(--rosa);font-weight:700':'var(--gris-s)')+'">'+pagoEtiqueta(r)+'</td>'+
       '<td style="padding:7px 10px;text-align:right;color:var(--nar);font-weight:'+(r.anti>0?'700':'400')+'">'+
         (r.anti>0?clp(r.anti):'-')+'</td>'+
       '<td style="padding:7px 10px;text-align:right;color:var(--vrd)">'+(r.prop>0?clp(r.prop):'-')+'</td>'+
@@ -1237,13 +1241,15 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   txt('resGiftTotal',gi.n?clp(gi.total)+' vendidas':(canjes.length+' canje(s)'));
 
   /* Mensaje Darwin */
-  var pgL=function(x){return x==='Debito'?'Débito':x==='Credito'?'Crédito':x;};
+  var pgL=function(x){return x==='Debito'?'Débito':x==='Credito'?'Crédito':x===PAGO_MIXTO?'Pago mixto sin detalle':x;};
   var L=[saludoMsg,''];
   L.push('Hicimos '+rows.length+' servicios y vendimos '+clp(ventas)+', con un ticket de '+clp(ticket)+(ticket<META_TICKET?' (un poco bajo la meta).':' (sobre la meta).'));
   L.push('Hubo '+nuevas+' '+(nuevas===1?'clienta nueva':'clientas nuevas')+' y las propinas sumaron '+clp(totalProp)+'.');
   L.push('');
   L.push('Cómo pagaron:');
   pagoOrd.filter(function(pg){return pagoMap[pg];}).forEach(function(pg){L.push('- '+pgL(pg)+': '+clp(pagoMap[pg].total)+' ('+pagoMap[pg].n+')');});
+  if(nDivididos)L.push('Ojo: '+nDivididos+(nDivididos===1?' servicio se pagó':' servicios se pagaron')+' con dos medios, así que cada medio muestra solo su parte.');
+  if(nMixSin)L.push('Hay '+nMixSin+(nMixSin===1?' servicio':' servicios')+' con pago mixto que no tiene el detalle de cuánto fue en cada medio, por eso no están sumados en efectivo ni en tarjeta.');
   if(totalPropCalc>0){
     L.push('');L.push('Las propinas llegaron así:');
     pagoOrd.filter(function(pg){return propPagoMap[pg];}).forEach(function(pg){L.push('- '+pgL(pg)+': '+clp(propPagoMap[pg].total));});
@@ -1445,6 +1451,7 @@ function procesarRegistroBuffer(arrayBuffer){
       var cProp=fc(['propina','propinas']);
       var cTipoMov=fc(['tipodemovimiento']),cAdic=fc(['montopagoadicional']),cMedAdic=fc(['mediopagoadicional']);
       var cMad=fc(['serviciomadre']),cAd1=fc(['adicional1']),cAd2=fc(['adicional2']),cRetC=fc(['retiro']);
+      var cPago2=fc(['mediodepago2']),cMonto2=fc(['montopago2']);
       if(!cF||!cP||!cV){alert('Columnas no encontradas.');return;}
 
       ALL_ROWS=[];CLI_DATA={};
@@ -1469,7 +1476,7 @@ function procesarRegistroBuffer(arrayBuffer){
         var esGift=canon(pago).indexOf('gift')>=0||(cTipoMov&&canon(r[cTipoMov])==='canje')||canon(serv).indexOf('gift')>=0;
         var gAdic=cAdic?giftNum(r[cAdic]):0;
         var tp=bkTipo(r,{madre:cMad,ad1:cAd1,ad2:cAd2,ret:cRetC},serv);
-        ALL_ROWS.push({madre:tp.madre,ad1:tp.ad1,ad2:tp.ad2,retiro:tp.retiro,fecha:f,prof:p,precio:v,cli:cli,serv:serv,estado:estado,nueva:nueva,primera:primera||f,pago:pago,anti:anti,prop:prop,gift:esGift,giftAdic:esGift?Math.min(gAdic,v):0,giftMedio:cMedAdic?String(r[cMedAdic]||'').trim():''});
+        ALL_ROWS.push({madre:tp.madre,ad1:tp.ad1,ad2:tp.ad2,retiro:tp.retiro,fecha:f,prof:p,precio:v,cli:cli,serv:serv,estado:estado,nueva:nueva,primera:primera||f,pago:pago,pago2:cPago2?String(r[cPago2]||'').trim():'',monto2:cMonto2?giftNum(r[cMonto2]):0,anti:anti,prop:prop,gift:esGift,giftAdic:esGift?Math.min(gAdic,v):0,giftMedio:cMedAdic?String(r[cMedAdic]||'').trim():''});
         if(f>ultimaFecha)ultimaFecha=f;
         /* construir CLI_DATA */
         if(!CLI_DATA[cli]){CLI_DATA[cli]={cli:cli,n:0,total:0,servicios:[],prof:p,profHabitual:p,profCounts:{},ultima:'',primera:primera||f,estado:estado,nueva:nueva,ultimoServ:''};}
@@ -2262,6 +2269,34 @@ function isPremiumSvc(s){var c=canon(s||'');return c.indexOf('cuidadosuperior')>
 /* un canje (servicio pagado con gift card) no es plata del dia: solo cuenta lo pagado con otro medio */
 function valCaja(r){return r.gift?(r.giftAdic||0):r.precio;}
 function pagoCaja(r){return r.gift?normPago(r.giftMedio||''):normPago(r.pago||'');}
+
+/* un servicio puede pagarse con dos medios: Medio de Pago (principal) + Medio de pago 2 / Monto pago 2.
+   Devuelve las partes {m: medio, v: monto}. Si se sabe que fue mixto pero no cuanto en cada medio, queda como 'Mixto sin detalle' */
+var PAGO_MIXTO='Mixto sin detalle';
+function pagoTextoMixto(t){
+  var c=canon(t||''),n=0;
+  ['efe','tran','deb','cred','online|enlinea','abono'].forEach(function(k){if(k.split('|').some(function(x){return c.indexOf(x)>=0;}))n++;});
+  return n>=2;
+}
+function pagosCaja(r){
+  var base=valCaja(r);
+  if(r.gift)return [{m:pagoCaja(r),v:base}];
+  var m1=normPago(r.pago||''),m2=r.pago2?normPago(r.pago2):'';
+  if(m2){
+    var a=r.monto2||0;
+    if(a>0&&a<base)return [{m:m1,v:base-a},{m:m2,v:a}];
+    if(a>=base&&a>0)return [{m:m2,v:base}];
+    return [{m:PAGO_MIXTO,v:base}];
+  }
+  if(pagoTextoMixto(r.pago))return [{m:PAGO_MIXTO,v:base}];
+  return [{m:m1,v:base}];
+}
+function pagoEtiqueta(r){
+  if(r.gift)return '🎁 Canje gift card';
+  var p=pagosCaja(r);
+  if(p.length===1)return p[0].m==='Debito'?'Débito':p[0].m==='Credito'?'Crédito':p[0].m;
+  return p.map(function(x){return (x.m==='Debito'?'Débito':x.m==='Credito'?'Crédito':x.m)+' '+clp(x.v);}).join(' + ');
+}
 
 function giftNum(v){return typeof v==='number'?v:(parseFloat(String(v||'0').replace(/[^\d.,-]/g,'').replace(/\./g,'').replace(',','.'))||0);}
 
