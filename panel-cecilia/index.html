@@ -942,6 +942,7 @@ function pvMensaje(tipo,nombre,serv){
     ]
   };
   var arr=V[tipo]||V[3];
+  if(tipo===3&&canonSearch(serv).indexOf('maquill')>=0)arr=arr.slice(0,2);
   return arr[pvHash(canonSearch(nombre)+tipo)%arr.length];
 }
 /* nombres que no son una clienta real (no se les puede escribir) */
@@ -960,6 +961,7 @@ function renderPostVenta(){
     else if(d>=17&&d<=24)tipo=2;
     else if(d>=33&&d<=62)tipo=3;
     else if(d>=7&&d<=10){tipo=1;venc=true;}
+    if(c.maqSolo&&(tipo===1||tipo===2))return;
     if(!tipo)return;
     var item=Object.assign({dias:d,tipo:tipo},c);
     var ts=sent[pvKey(c.cli,tipo,c.ultima)];
@@ -1492,8 +1494,8 @@ function procesarRegistroBuffer(arrayBuffer){
         CLI_DATA[cli].estado=estado||CLI_DATA[cli].estado;
         if(nueva)CLI_DATA[cli].nueva=true;
         if(primera&&(!CLI_DATA[cli].primera||primera<CLI_DATA[cli].primera))CLI_DATA[cli].primera=primera;
-        if(f>CLI_DATA[cli].ultima){CLI_DATA[cli].ultima=f;CLI_DATA[cli].ultimoServ=serv;CLI_DATA[cli].prof=p;CLI_DATA[cli].maqUlt=false;}
-        if(f===CLI_DATA[cli].ultima&&canonSearch(serv).indexOf('maquill')>=0)CLI_DATA[cli].maqUlt=true;
+        if(f>CLI_DATA[cli].ultima){CLI_DATA[cli].ultima=f;CLI_DATA[cli].ultimoServ=serv;CLI_DATA[cli].prof=p;CLI_DATA[cli].ultN=0;CLI_DATA[cli].ultMaq=0;}
+        if(f===CLI_DATA[cli].ultima){CLI_DATA[cli].ultN++;if(canonSearch(serv).indexOf('maquill')>=0)CLI_DATA[cli].ultMaq++;CLI_DATA[cli].maqUlt=CLI_DATA[cli].ultMaq>0;CLI_DATA[cli].maqSolo=CLI_DATA[cli].ultMaq===CLI_DATA[cli].ultN;}
         if(serv&&!CLI_DATA[cli].servicios.includes(serv))CLI_DATA[cli].servicios.unshift(serv);
         /* contador para saber quien es la manicurista HABITUAL (puede diferir de la ultima) */
         CLI_DATA[cli].profCounts[p]=(CLI_DATA[cli].profCounts[p]||0)+1;
