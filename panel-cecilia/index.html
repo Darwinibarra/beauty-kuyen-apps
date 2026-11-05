@@ -1074,6 +1074,7 @@ function mixLinea(m){
   if(m.dormidas)parts.push(pl(m.dormidas,'dormida','dormidas'));
   var ult=parts.pop();
   var txt='Atendimos '+pl(m.tot,'clienta','clientas')+': '+parts.join(', ')+' y '+ult+'.';
+  if(m.recuperadas||m.dormidas)txt+=' En total, '+(m.recurrentes+m.recuperadas+m.dormidas)+' ya venían al salón y '+m.nuevas+(m.nuevas===1?' era nueva.':' eran nuevas.');
   if(m.recuperadas&&m.dormidas)txt+=' Las recuperadas son las que volvieron después de 46 a 90 días y las dormidas las que volvieron después de más de 90.';
   else if(m.recuperadas)txt+=' Las recuperadas son las que volvieron después de 46 a 90 días.';
   else if(m.dormidas)txt+=' Las dormidas son las que volvieron después de más de 90 días.';
