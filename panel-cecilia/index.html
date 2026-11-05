@@ -1058,6 +1058,27 @@ function renderResumen(ultimoDia,diaData){
   renderResumenCore(rows,fechaLabel,false,'Hola Darwin, te paso el cierre del '+fechaLabel+':');
 }
 
+/* clientas distintas del periodo: nueva = primera visita; recurrente = volvio en menos de 45 dias; recuperada = volvio despues de 46 a 90 dias; dormida = volvio despues de mas de 90 */
+function mixClientas(rows){
+  var seen={},o={tot:0,nuevas:0,recurrentes:0,recuperadas:0,dormidas:0};
+  rows.slice().sort(function(a,b){return a.fecha<b.fecha?-1:a.fecha>b.fecha?1:0;}).forEach(function(r){
+    var k=canonSearch(r.cli);if(!k||seen[k])return;seen[k]=1;o.tot++;
+    if(r.nueva)o.nuevas++;else if(r.estado==='Dormida')o.dormidas++;else if(r.estado==='En riesgo')o.recuperadas++;else o.recurrentes++;
+  });
+  return o;
+}
+function mixLinea(m){
+  var pl=function(n,u,p){return n+' '+(n===1?u:p);};
+  var parts=[pl(m.recurrentes,'recurrente','recurrentes'),pl(m.nuevas,'nueva','nuevas')];
+  if(m.recuperadas)parts.push(pl(m.recuperadas,'recuperada','recuperadas'));
+  if(m.dormidas)parts.push(pl(m.dormidas,'dormida','dormidas'));
+  var ult=parts.pop();
+  var txt='Atendimos '+pl(m.tot,'clienta','clientas')+': '+parts.join(', ')+' y '+ult+'.';
+  if(m.recuperadas&&m.dormidas)txt+=' Las recuperadas son las que volvieron después de 46 a 90 días y las dormidas las que volvieron después de más de 90.';
+  else if(m.recuperadas)txt+=' Las recuperadas son las que volvieron después de 46 a 90 días.';
+  else if(m.dormidas)txt+=' Las dormidas son las que volvieron después de más de 90 días.';
+  return txt;
+}
 function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   window._resRedraw=function(){renderResumenCore(rows,fechaLabel,esSemana,saludoMsg);};
   var ventas=rows.reduce(function(s,r){return s+valCaja(r);},0);
@@ -1080,7 +1101,7 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   var premLista=premNames.filter(function(k){return (premPer[k]||0)>0;}).map(function(k){return k+' '+premPer[k];}).join(', ');
   var premMsg='\n\n'+(premRows.length?'Del Esmaltado permanente Cuidado Superior hicimos '+premRows.length+' ('+premAll+' en total hasta ahora): '+premLista+'.':'No se hizo ningún Esmaltado permanente Cuidado Superior '+(esSemana?'esta semana':'hoy')+(premAll?' (llevamos '+premAll+' en total).':' (todavía no se ha hecho ninguno).'));
   var efSheet=consumoEfectivoRango();
-  var nuevas=rows.filter(function(r){return r.nueva;}).length;
+  var mixC=mixClientas(rows),nuevas=mixC.nuevas;
   var totalAnti=rows.reduce(function(s,r){return s+(r.anti||0);},0)+efSheet.reduce(function(s,c){return s+c.monto;},0);
   var totalProp=rows.reduce(function(s,r){return s+(r.prop||0);},0);
   txt('resFecha',fechaLabel);
@@ -1095,7 +1116,11 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
     frow('Meta ticket',clp(META_TICKET))+
     frow('Diferencia vs meta','<b style="color:'+(ticket>=META_TICKET?'var(--vrd)':'var(--roj)')+'">'+
       (ticket>=META_TICKET?'+':'')+clp(ticket-META_TICKET)+'</b>')+
-    frow('Clientas nuevas','<b>'+nuevas+'</b>')+
+    frow('Clientas atendidas','<b>'+mixC.tot+'</b>')+
+    frow('Recurrentes','<b>'+mixC.recurrentes+'</b>')+
+    frow('Nuevas','<b>'+mixC.nuevas+'</b>')+
+    (mixC.recuperadas?frow('Recuperadas <span style="font-size:10px;color:var(--gris-s)">volvieron tras 46 a 90 días</span>','<b>'+mixC.recuperadas+'</b>'):'')+
+    (mixC.dormidas?frow('Dormidas <span style="font-size:10px;color:var(--gris-s)">volvieron tras más de 90 días</span>','<b>'+mixC.dormidas+'</b>'):'')+
     frow('Propinas','<b>'+clp(totalProp)+'</b>')+
     premHtml;
 
@@ -1253,7 +1278,8 @@ function renderResumenCore(rows,fechaLabel,esSemana,saludoMsg){
   var pgL=function(x){return x==='Debito'?'Débito':x==='Credito'?'Crédito':x===PAGO_MIXTO?'Pago mixto sin detalle':x;};
   var L=[saludoMsg,''];
   L.push('Hicimos '+rows.length+' servicios y vendimos '+clp(ventas)+', con un ticket de '+clp(ticket)+(ticket<META_TICKET?' (un poco bajo la meta).':' (sobre la meta).'));
-  L.push('Hubo '+nuevas+' '+(nuevas===1?'clienta nueva':'clientas nuevas')+' y las propinas sumaron '+clp(totalProp)+'.');
+  L.push(mixLinea(mixC));
+  L.push('Las propinas sumaron '+clp(totalProp)+'.');
   L.push('');
   L.push('Cómo pagaron:');
   pagoOrd.filter(function(pg){return pagoMap[pg];}).forEach(function(pg){L.push('- '+pgL(pg)+': '+clp(pagoMap[pg].total)+' ('+pagoMap[pg].n+')');});
