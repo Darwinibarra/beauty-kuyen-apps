@@ -1,6 +1,6 @@
 // Service worker minimo: permite instalar la app y abrirla sin conexion (solo la interfaz;
 // los reportes siempre necesitan que cargues un Excel manualmente).
-const CACHE_NAME = 'centro-mando-shell-v3';
+const CACHE_NAME = 'centro-mando-shell-v4';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
