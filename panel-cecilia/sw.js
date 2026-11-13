@@ -1,6 +1,6 @@
 // Service worker minimo: permite instalar la app y abrirla sin conexion (solo la interfaz;
 // los reportes siempre necesitan que cargues un Excel manualmente).
-const CACHE_NAME = 'panel-cecilia-shell-v2';
+const CACHE_NAME = 'panel-cecilia-shell-v3';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
